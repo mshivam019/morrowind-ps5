@@ -1,0 +1,338 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 3fc1b83..88ad0c8 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -305,6 +305,12 @@ set(USED_OSG_PLUGINS
+     osgdb_serializers_osg
+     osgdb_tga)
+ 
++if(PS5)
++    # Retail Morrowind uses NIF; the optional Collada importer is not packaged.
++    list(REMOVE_ITEM USED_OSG_PLUGINS osgdb_dae)
++    list(APPEND USED_OSG_PLUGINS osgdb_deprecated_osg)
++endif()
++
+ if(NOT COLLADA_DOM_VERSION_MAJOR)
+     set(COLLADA_DOM_VERSION_MAJOR 2)
+ endif()
+@@ -503,7 +509,7 @@ else(USE_LUAJIT)
+     find_package(Lua REQUIRED)
+     add_compile_definitions(NO_LUAJIT)
+ endif(USE_LUAJIT)
+-if (NOT WIN32 AND NOT ANDROID)
++if (NOT WIN32 AND NOT ANDROID AND NOT PS5)
+     include(cmake/CheckLuaCustomAllocator.cmake)
+ endif()
+ 
+diff --git a/apps/openmw/engine.cpp b/apps/openmw/engine.cpp
+index 55b8a8f..9d8e130 100644
+--- a/apps/openmw/engine.cpp
++++ b/apps/openmw/engine.cpp
+@@ -192,6 +192,9 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+     const osg::Timer_t frameStart = mViewer->getStartTick();
+     const osg::Timer* const timer = osg::Timer::instance();
+     osg::Stats* const stats = mViewer->getViewerStats();
++#ifdef __PROSPERO__
++    const osg::Timer_t ps5FrameStart = timer->tick();
++#endif
+ 
+     mEnvironment.setFrameDuration(frametime);
+ 
+@@ -351,9 +354,24 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
+     // if there is a separate Lua thread, it starts the update now
+     mLuaWorker->allowUpdate(frameStart, frameNumber, *stats);
+ 
++#ifdef __PROSPERO__
++    const osg::Timer_t ps5RenderStart = timer->tick();
++#endif
+     mViewer->renderingTraversals();
+ 
++#ifdef __PROSPERO__
++    const osg::Timer_t ps5RenderEnd = timer->tick();
++#endif
+     mLuaWorker->finishUpdate(frameStart, frameNumber, *stats);
++#ifdef __PROSPERO__
++    static unsigned ps5ProfileFrames = 0;
++    ++ps5ProfileFrames;
++    if (ps5ProfileFrames <= 3 || ps5ProfileFrames % 60 == 0)
++        Log(Debug::Info) << "PS5 frame timing " << ps5ProfileFrames
++                        << " update_ms=" << timer->delta_m(ps5FrameStart, ps5RenderStart)
++                        << " render_ms=" << timer->delta_m(ps5RenderStart, ps5RenderEnd)
++                        << " lua_wait_ms=" << timer->delta_m(ps5RenderEnd, timer->tick());
++#endif
+ 
+     return true;
+ }
+@@ -385,7 +403,10 @@ OMW::Engine::Engine(Files::ConfigurationManager& configurationManager)
+     SDL_SetHint(SDL_HINT_ACCELEROMETER_AS_JOYSTICK, "0"); // We use only gamepads
+ 
+     Uint32 flags
+-        = SDL_INIT_VIDEO | SDL_INIT_NOPARACHUTE | SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK | SDL_INIT_SENSOR;
++        = SDL_INIT_VIDEO | SDL_INIT_NOPARACHUTE | SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK;
++#ifndef __PROSPERO__
++    flags |= SDL_INIT_SENSOR;
++#endif
+     if (SDL_WasInit(flags) == 0)
+     {
+         SDL_SetMainReady();
+@@ -507,6 +528,9 @@ void OMW::Engine::createWindow()
+     }
+ 
+     Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
++#ifdef __PROSPERO__
++    flags &= ~SDL_WINDOW_RESIZABLE;
++#endif
+     if (windowMode == Settings::WindowMode::Fullscreen)
+         flags |= SDL_WINDOW_FULLSCREEN;
+     else if (windowMode == Settings::WindowMode::WindowedFullscreen)
+@@ -951,6 +975,10 @@ void OMW::Engine::go()
+ 
+     // Setup viewer
+     mViewer = new osgViewer::Viewer;
++#ifdef __PROSPERO__
++    // The native SDL/EGL context belongs to the video creation thread.
++    mViewer->setThreadingModel(osgViewer::Viewer::SingleThreaded);
++#endif
+     mViewer->setReleaseContextAtEndOfFrameHint(false);
+ 
+     // Do not try to outsmart the OS thread scheduler (see bug #4785).
+@@ -1027,6 +1055,9 @@ void OMW::Engine::go()
+     MWWorld::DateTimeManager& timeManager = *mWorld->getTimeManager();
+     Misc::FrameRateLimiter frameRateLimiter = Misc::makeFrameRateLimiter(mEnvironment.getFrameRateLimit());
+     const std::chrono::steady_clock::duration maxSimulationInterval(std::chrono::milliseconds(200));
++#ifdef __PROSPERO__
++    unsigned ps5RenderedFrames = 0;
++#endif
+     while (!mViewer->done() && !mStateManager->hasQuitRequest())
+     {
+         const double dt = std::chrono::duration_cast<std::chrono::duration<double>>(
+@@ -1043,6 +1074,11 @@ void OMW::Engine::go()
+             std::this_thread::sleep_for(std::chrono::milliseconds(5));
+             continue;
+         }
++#ifdef __PROSPERO__
++        ++ps5RenderedFrames;
++        if (ps5RenderedFrames == 1 || ps5RenderedFrames == 60)
++            Log(Debug::Info) << "PS5 completed main-loop frame " << ps5RenderedFrames;
++#endif
+         timeManager.updateIsPaused();
+         if (!timeManager.isPaused())
+         {
+diff --git a/apps/openmw/main.cpp b/apps/openmw/main.cpp
+index 70e48e0..ae9fcd3 100644
+--- a/apps/openmw/main.cpp
++++ b/apps/openmw/main.cpp
+@@ -24,6 +24,12 @@ extern "C" __declspec(dllexport) DWORD AmdPowerXpressRequestHighPerformance = 0x
+ 
+ #include <filesystem>
+ 
++#ifdef __PROSPERO__
++#include <cstdio>
++#include <sys/stat.h>
++#include <unistd.h>
++#endif
++
+ #if (defined(__APPLE__) || defined(__linux) || defined(__unix) || defined(__posix))
+ #include <unistd.h>
+ #endif
+@@ -61,7 +67,11 @@ bool parseOptions(int argc, char** argv, OMW::Engine& engine, Files::Configurati
+         return false;
+     }
+ 
++#ifdef __PROSPERO__
++    cfgMgr.processPaths(variables, "/app0/assets");
++#else
+     cfgMgr.processPaths(variables, std::filesystem::current_path());
++#endif
+ 
+     cfgMgr.readConfiguration(variables, desc);
+ 
+@@ -240,6 +250,20 @@ extern "C" int SDL_main(int argc, char** argv)
+ int main(int argc, char** argv)
+ #endif
+ {
++#ifdef __PROSPERO__
++    mkdir("/download0/config", 0777);
++    mkdir("/download0/user", 0777);
++    mkdir("/download0/cache", 0777);
++    freopen("/download0/stdout.log", "w", stdout);
++    freopen("/download0/stderr.log", "w", stderr);
++    static char stdoutBuffer[65536];
++    setvbuf(stdout, stdoutBuffer, _IOFBF, sizeof(stdoutBuffer));
++    setvbuf(stderr, nullptr, _IONBF, 0);
++    // Native titles cannot change cwd; PS5 paths and packaged resources are absolute.
++    setenv("TMPDIR", "/download0/cache", 1);
++    setenv("ALSOFT_CONF", "/app0/assets/alsoft.conf", 1);
++    fprintf(stderr, "OpenMW PS5: entering engine\n");
++#endif
+     return Debug::wrapApplication(&runApplication, argc, argv, "OpenMW");
+ }
+ 
+diff --git a/apps/openmw/mwgui/loadingscreen.cpp b/apps/openmw/mwgui/loadingscreen.cpp
+index 107a677..e6b04be 100644
+--- a/apps/openmw/mwgui/loadingscreen.cpp
++++ b/apps/openmw/mwgui/loadingscreen.cpp
+@@ -120,6 +120,9 @@ namespace MWGui
+ 
+         void operator()(osg::RenderInfo& renderInfo) const override
+         {
++            if (!mOneshot)
++                return;
++
+             const osg::Viewport* viewPort = renderInfo.getCurrentCamera()->getViewport();
+             int w = static_cast<int>(viewPort->width());
+             int h = static_cast<int>(viewPort->height());
+@@ -289,6 +292,9 @@ namespace MWGui
+             mTexture->setWrap(osg::Texture::WRAP_S, osg::Texture::CLAMP_TO_EDGE);
+             mTexture->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_EDGE);
+             mTexture->setInternalFormat(GL_RGB);
++            // The loading background is displayed at viewport size; no mip chain is needed.
++            mTexture->setFilter(osg::Texture::MIN_FILTER, osg::Texture::LINEAR);
++            mTexture->setFilter(osg::Texture::MAG_FILTER, osg::Texture::LINEAR);
+             mTexture->setResizeNonPowerOfTwoHint(false);
+         }
+ 
+diff --git a/apps/openmw/mwgui/windowmanagerimp.cpp b/apps/openmw/mwgui/windowmanagerimp.cpp
+index 5c90de5..9935fd0 100644
+--- a/apps/openmw/mwgui/windowmanagerimp.cpp
++++ b/apps/openmw/mwgui/windowmanagerimp.cpp
+@@ -272,6 +272,11 @@ namespace MWGui
+         MyGUI::InputManager::getInstance().eventChangeKeyFocus
+             += MyGUI::newDelegate(this, &WindowManager::onKeyFocusChanged);
+ 
++#ifdef __PROSPERO__
++        // The PS5 EGL SDL adapter has no hardware cursor. MyGUI renders the
++        // controller-driven pointer with the rest of the interface.
++        MyGUI::PointerManager::getInstance().setVisible(mCursorVisible && mCursorActive);
++#else
+         // Create all cursors in advance
+         createCursors();
+         onCursorChange(MyGUI::PointerManager::getInstance().getDefaultPointer());
+@@ -279,6 +284,7 @@ namespace MWGui
+ 
+         // hide mygui's pointer
+         MyGUI::PointerManager::getInstance().setVisible(false);
++#endif
+ 
+         mVideoBackground = MyGUI::Gui::getInstance().createWidgetReal<MyGUI::ImageBox>(
+             "ImageBox", 0, 0, 1, 1, MyGUI::Align::Default, "Video");
+@@ -1221,11 +1227,17 @@ namespace MWGui
+     void WindowManager::setCursorVisible(bool visible)
+     {
+         mCursorVisible = visible;
++#ifdef __PROSPERO__
++        MyGUI::PointerManager::getInstance().setVisible(mCursorVisible && mCursorActive);
++#endif
+     }
+ 
+     void WindowManager::setCursorActive(bool active)
+     {
+         mCursorActive = active;
++#ifdef __PROSPERO__
++        MyGUI::PointerManager::getInstance().setVisible(mCursorVisible && mCursorActive);
++#endif
+     }
+ 
+     void WindowManager::onRetrieveTag(const MyGUI::UString& tag, MyGUI::UString& result)
+diff --git a/apps/openmw/mwinput/bindingsmanager.cpp b/apps/openmw/mwinput/bindingsmanager.cpp
+index ac5d9b5..b9b17e1 100644
+--- a/apps/openmw/mwinput/bindingsmanager.cpp
++++ b/apps/openmw/mwinput/bindingsmanager.cpp
+@@ -375,7 +375,13 @@ namespace MWInput
+         defaultButtonBindings[A_TogglePOV] = SDL_CONTROLLER_BUTTON_RIGHTSTICK;
+         defaultButtonBindings[A_Inventory] = SDL_CONTROLLER_BUTTON_B;
+         defaultButtonBindings[A_GameMenu] = SDL_CONTROLLER_BUTTON_START;
++#ifdef __PROSPERO__
++        // The system owns the PS button; touchpad gives the demo a save action
++        // that does not require keyboard entry in the named-save dialog.
++        defaultButtonBindings[A_QuickSave] = SDL_CONTROLLER_BUTTON_TOUCHPAD;
++#else
+         defaultButtonBindings[A_QuickSave] = SDL_CONTROLLER_BUTTON_GUIDE;
++#endif
+ 
+         std::map<int, int> defaultAxisBindings;
+         defaultAxisBindings[A_MoveForwardBackward] = SDL_CONTROLLER_AXIS_LEFTY;
+diff --git a/components/CMakeLists.txt b/components/CMakeLists.txt
+index a2131b8..92a9dfd 100644
+--- a/components/CMakeLists.txt
++++ b/components/CMakeLists.txt
+@@ -399,7 +399,7 @@ if(WIN32)
+         windowscrashmonitor
+         windowscrashshm
+     )
+-elseif(NOT ANDROID)
++elseif(NOT ANDROID AND NOT PS5)
+     add_component_dir (crashcatcher
+         crashcatcher
+     )
+diff --git a/components/debug/debugging.cpp b/components/debug/debugging.cpp
+index ff0404f..b11cdd1 100644
+--- a/components/debug/debugging.cpp
++++ b/components/debug/debugging.cpp
+@@ -16,7 +16,9 @@
+ #pragma warning(pop)
+ #endif
+ 
++#ifndef __PROSPERO__
+ #include <components/crashcatcher/crashcatcher.hpp>
++#endif
+ #include <components/files/conversion.hpp>
+ #include <components/misc/strings/conversion.hpp>
+ #include <components/misc/strings/lower.hpp>
+@@ -470,7 +472,7 @@ namespace Debug
+                 }
+                 CoTaskMemFree(userProfile);
+                 Crash::CrashCatcher crashy(argc, argv, dumpDirectory, crashDumpName, freezeDumpName);
+-#else
++#elif !defined(__PROSPERO__)
+                 const std::string crashLogName = Misc::StringUtils::lowerCase(appName) + "-crash.log";
+                 // install the crash handler as soon as possible.
+                 crashCatcherInstall(argc, argv, std::filesystem::temp_directory_path() / crashLogName);
+diff --git a/components/files/fixedpath.hpp b/components/files/fixedpath.hpp
+index 279c5b5..0b6628e 100644
+--- a/components/files/fixedpath.hpp
++++ b/components/files/fixedpath.hpp
+@@ -5,7 +5,13 @@
+ #include <string>
+ #include <vector>
+ 
+-#if defined(__linux__) || defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined(__OpenBSD__)
++#if defined(__PROSPERO__)
++#include <components/files/ps5path.hpp>
++namespace Files
++{
++    using TargetPathType = Ps5Path;
++}
++#elif defined(__linux__) || defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined(__OpenBSD__)
+ #ifndef ANDROID
+ #include <components/files/linuxpath.hpp>
+ namespace Files
+diff --git a/components/sdlutil/sdlcursormanager.cpp b/components/sdlutil/sdlcursormanager.cpp
+index 9e6719d..1f41aee 100644
+--- a/components/sdlutil/sdlcursormanager.cpp
++++ b/components/sdlutil/sdlcursormanager.cpp
+@@ -18,7 +18,7 @@
+ 
+ #include "imagetosurface.hpp"
+ 
+-#if defined(OSG_LIBRARY_STATIC) && (!defined(ANDROID) || OSG_VERSION_GREATER_THAN(3, 6, 5))
++#if defined(OSG_LIBRARY_STATIC) && !defined(__PROSPERO__) && (!defined(ANDROID) || OSG_VERSION_GREATER_THAN(3, 6, 5))
+ // Sets the default windowing system interface according to the OS.
+ // Necessary for OpenSceneGraph to do some things, like decompression.
+ USE_GRAPHICSWINDOW()
+diff --git a/components/sdlutil/sdlgraphicswindow.cpp b/components/sdlutil/sdlgraphicswindow.cpp
+index 9ff0545..7228442 100644
+--- a/components/sdlutil/sdlgraphicswindow.cpp
++++ b/components/sdlutil/sdlgraphicswindow.cpp
+@@ -124,6 +124,11 @@ namespace SDLUtil
+         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, minor);
+ #endif
+ 
++#ifdef __PROSPERO__
++        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
++        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
++        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
++#endif
+         mContext = SDL_GL_CreateContext(mWindow);
+         if (!mContext)
+         {

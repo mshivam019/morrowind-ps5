@@ -1,0 +1,502 @@
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index d121eb0..94531d3 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -1,3 +1,9 @@
++# Detailed PS5 timing is opt-in; the engine keeps its own sparse frame timings.
++OPTION(PS5_OSG_DETAILED_PROFILE "Enable detailed PS5 OSG leaf and traversal timings" OFF)
++IF(PS5_OSG_DETAILED_PROFILE)
++    ADD_DEFINITIONS(-DPS5_OSG_DETAILED_PROFILE=1)
++ENDIF()
++
+ IF(ANDROID)
+     SET(MODULE_USER_STATIC_OR_DYNAMIC ${OPENSCENEGRAPH_USER_DEFINED_DYNAMIC_OR_STATIC})
+ ENDIF(ANDROID)
+@@ -30,6 +36,9 @@ FOREACH( mylibfolder
+         osgPlugins
+     )
+ 
++    if(PS5 AND mylibfolder MATCHES "^(osgManipulator|osgUI|osgVolume|osgTerrain|osgWidget|osgPresentation)$")
++        continue()
++    endif()
+     ADD_SUBDIRECTORY(${mylibfolder})
+ 
+ ENDFOREACH()
+diff --git a/src/OpenThreads/pthreads/PThread.cpp b/src/OpenThreads/pthreads/PThread.cpp
+index 7cac330..ee82773 100644
+--- a/src/OpenThreads/pthreads/PThread.cpp
++++ b/src/OpenThreads/pthreads/PThread.cpp
+@@ -60,6 +60,9 @@
+ #endif
+ 
+ #include <OpenThreads/Thread>
++#if defined(__PROSPERO__)
++#include <pthread_np.h>
++#endif
+ #include "PThreadPrivateData.h"
+ 
+ #include <iostream>
+@@ -466,7 +469,9 @@ Thread *Thread::CurrentThread()
+ 
+ size_t Thread::CurrentThreadId()
+ {
+-#if defined(__APPLE__)
++#if defined(__PROSPERO__)
++  return static_cast<size_t>(pthread_getthreadid_np());
++#elif defined(__APPLE__)
+   return (size_t)::syscall(SYS_thread_selfid);
+ #elif defined(__ANDROID__)
+   return (size_t)gettid();
+diff --git a/src/OpenThreads/pthreads/PThreadCondition.cpp b/src/OpenThreads/pthreads/PThreadCondition.cpp
+index f1a511f..651ad9e 100644
+--- a/src/OpenThreads/pthreads/PThreadCondition.cpp
++++ b/src/OpenThreads/pthreads/PThreadCondition.cpp
+@@ -24,6 +24,7 @@
+ #endif
+ 
+ #include <stdio.h>
++#include <system_error>
+ 
+ #include <OpenThreads/Condition>
+ #include "PThreadConditionPrivateData.h"
+@@ -88,7 +89,8 @@ Condition::Condition() {
+     int status = pthread_cond_init( &pd->condition, NULL );
+     if (status)
+     {
+-        printf("Error: pthread_cond_init(,) returned error status, status = %d\n",status);
++        delete pd;
++        throw std::system_error(status, std::generic_category(), "pthread_cond_init");
+     }
+ 
+     _prvData = static_cast<void *>(pd);
+diff --git a/src/OpenThreads/pthreads/PThreadConditionPrivateData.h b/src/OpenThreads/pthreads/PThreadConditionPrivateData.h
+index 2614280..f54f0d5 100644
+--- a/src/OpenThreads/pthreads/PThreadConditionPrivateData.h
++++ b/src/OpenThreads/pthreads/PThreadConditionPrivateData.h
+@@ -31,7 +31,7 @@ class PThreadConditionPrivateData {
+ 
+ private:
+ 
+-    PThreadConditionPrivateData() {};
++    PThreadConditionPrivateData(): condition() {};
+ 
+     virtual ~PThreadConditionPrivateData() {};
+ 
+diff --git a/src/OpenThreads/pthreads/PThreadMutex.cpp b/src/OpenThreads/pthreads/PThreadMutex.cpp
+index 3a3d1c3..a4e0628 100644
+--- a/src/OpenThreads/pthreads/PThreadMutex.cpp
++++ b/src/OpenThreads/pthreads/PThreadMutex.cpp
+@@ -19,6 +19,8 @@
+ 
+ #include <unistd.h>
+ #include <pthread.h>
++#include <memory>
++#include <system_error>
+ #include <OpenThreads/Mutex>
+ #include "PThreadMutexPrivateData.h"
+ 
+@@ -34,21 +36,29 @@ Mutex::Mutex(MutexType type):
+     _mutexType(type)
+ {
+ 
+-    pthread_mutexattr_t mutex_attr;
+-    pthread_mutexattr_init( &mutex_attr );
+-    
+-    PThreadMutexPrivateData *pd = new PThreadMutexPrivateData();
++    const auto deleteData = [](PThreadMutexPrivateData* data) { delete data; };
++    std::unique_ptr<PThreadMutexPrivateData, decltype(deleteData)> pd(
++        new PThreadMutexPrivateData(), deleteData);
++    pthread_mutexattr_t mutex_attr = {};
++    int status = pthread_mutexattr_init(&mutex_attr);
++    if (status != 0)
++        throw std::system_error(status, std::generic_category(), "pthread_mutexattr_init");
+ 
+     if (type==MUTEX_RECURSIVE)
+     {
+-        pthread_mutexattr_settype( &mutex_attr, PTHREAD_MUTEX_RECURSIVE );
++        status = pthread_mutexattr_settype( &mutex_attr, PTHREAD_MUTEX_RECURSIVE );
+     }
+     else
+     {
+     #ifndef __linux__ // (not available until NPTL) [
+-        pthread_mutexattr_settype( &mutex_attr, PTHREAD_MUTEX_ERRORCHECK );
++        status = pthread_mutexattr_settype( &mutex_attr, PTHREAD_MUTEX_ERRORCHECK );
+     #endif // ] __linux__
+     }
++    if (status != 0)
++    {
++        pthread_mutexattr_destroy(&mutex_attr);
++        throw std::system_error(status, std::generic_category(), "pthread_mutexattr_settype");
++    }
+ #ifdef ALLOW_PRIORITY_SCHEDULING // [
+ 
+ #ifdef __sun // [
+@@ -94,8 +104,16 @@ Mutex::Mutex(MutexType type):
+ 
+ #endif // ] ALLOW_PRIORITY_SCHEDULING
+ 
+-    pthread_mutex_init(&pd->mutex, &mutex_attr);
+-    _prvData = static_cast<void *>(pd);
++    status = pthread_mutex_init(&pd->mutex, &mutex_attr);
++    const int attr_status = pthread_mutexattr_destroy(&mutex_attr);
++    if (status != 0)
++        throw std::system_error(status, std::generic_category(), "pthread_mutex_init");
++    if (attr_status != 0)
++    {
++        pthread_mutex_destroy(&pd->mutex);
++        throw std::system_error(attr_status, std::generic_category(), "pthread_mutexattr_destroy");
++    }
++    _prvData = static_cast<void *>(pd.release());
+ 
+ }
+ 
+diff --git a/src/OpenThreads/pthreads/PThreadMutexPrivateData.h b/src/OpenThreads/pthreads/PThreadMutexPrivateData.h
+index 25d9670..4973a75 100644
+--- a/src/OpenThreads/pthreads/PThreadMutexPrivateData.h
++++ b/src/OpenThreads/pthreads/PThreadMutexPrivateData.h
+@@ -33,7 +33,7 @@ class PThreadMutexPrivateData {
+ 
+ private:
+ 
+-    PThreadMutexPrivateData() {};
++    PThreadMutexPrivateData(): mutex() {};
+ 
+     virtual ~PThreadMutexPrivateData() {};
+ 
+diff --git a/src/osg/GLExtensions.cpp b/src/osg/GLExtensions.cpp
+index 478b503..1918fa3 100644
+--- a/src/osg/GLExtensions.cpp
++++ b/src/osg/GLExtensions.cpp
+@@ -316,7 +316,16 @@ std::string& osg::getGLExtensionDisableString()
+ 
+ OSG_INIT_SINGLETON_PROXY(GLExtensionDisableStringInitializationProxy, osg::getGLExtensionDisableString())
+ 
+-#ifdef OSG_GL_LIBRARY_STATIC
++#if defined(__PROSPERO__)
++
++    extern "C" void* SDL_GL_GetProcAddress(const char* proc);
++
++    void* osg::getGLExtensionFuncPtr(const char* funcName)
++    {
++        return SDL_GL_GetProcAddress(funcName);
++    }
++
++#elif defined(OSG_GL_LIBRARY_STATIC)
+ 
+     #include "GLStaticLibrary.h"
+ 
+diff --git a/src/osg/Texture2D.cpp b/src/osg/Texture2D.cpp
+index 2aac8b2..a595df6 100644
+--- a/src/osg/Texture2D.cpp
++++ b/src/osg/Texture2D.cpp
+@@ -306,8 +306,13 @@ void Texture2D::apply(State& state) const
+              textureObject = generateAndAssignTextureObject(contextID, GL_TEXTURE_2D, _numMipmapLevels, texStorageSizedInternalFormat, _textureWidth, _textureHeight, 1, _borderWidth);
+              textureObject->bind();
+              applyTexParameters(GL_TEXTURE_2D, state);
+-             extensions->glTexStorage2D( GL_TEXTURE_2D, osg::maximum(_numMipmapLevels,1), texStorageSizedInternalFormat,
+-                      _textureWidth, _textureHeight);
++             // A matching pooled texture object may already own immutable storage.
++             if (!textureObject->isAllocated())
++             {
++                 extensions->glTexStorage2D( GL_TEXTURE_2D, osg::maximum(_numMipmapLevels,1), texStorageSizedInternalFormat,
++                          _textureWidth, _textureHeight);
++                 textureObject->setAllocated(true);
++             }
+          }
+          else
+          {
+diff --git a/src/osgDB/DynamicLibrary.cpp b/src/osgDB/DynamicLibrary.cpp
+index 9134292..6e81145 100644
+--- a/src/osgDB/DynamicLibrary.cpp
++++ b/src/osgDB/DynamicLibrary.cpp
+@@ -59,7 +59,9 @@ DynamicLibrary::~DynamicLibrary()
+     if (_handle)
+     {
+         OSG_INFO<<"Closing DynamicLibrary "<<_name<<std::endl;
+-#if defined(WIN32) && !defined(__CYGWIN__)
++#if defined(__PROSPERO__)
++        // PS5 plugins are registered statically; no dynamic library to unload.
++#elif defined(WIN32) && !defined(__CYGWIN__)
+         FreeLibrary((HMODULE)_handle);
+ #elif defined(__APPLE__) && defined(APPLE_PRE_10_3)
+         NSUnLinkModule(static_cast<NSModule>(_handle), FALSE);
+@@ -95,7 +97,9 @@ DynamicLibrary::HANDLE DynamicLibrary::getLibraryHandle( const std::string& libr
+ {
+     HANDLE handle = NULL;
+ 
+-#if defined(WIN32) && !defined(__CYGWIN__)
++#if defined(__PROSPERO__)
++    (void)libraryName;
++#elif defined(WIN32) && !defined(__CYGWIN__)
+ #ifdef OSG_USE_UTF8_FILENAME
+     handle = LoadLibraryW(  convertUTF8toUTF16(libraryName).c_str() );
+ #else
+@@ -150,7 +154,10 @@ DynamicLibrary::HANDLE DynamicLibrary::getLibraryHandle( const std::string& libr
+ DynamicLibrary::PROC_ADDRESS DynamicLibrary::getProcAddress(const std::string& procName)
+ {
+     if (_handle==NULL) return NULL;
+-#if defined(WIN32) && !defined(__CYGWIN__)
++#if defined(__PROSPERO__)
++    (void)procName;
++    return NULL;
++#elif defined(WIN32) && !defined(__CYGWIN__)
+     return osg::convertPointerType<DynamicLibrary::PROC_ADDRESS, FARPROC>( GetProcAddress( (HMODULE)_handle, procName.c_str() ) );
+ #elif defined(__APPLE__) && defined(APPLE_PRE_10_3)
+     std::string temp("_");
+diff --git a/src/osgUtil/RenderLeaf.cpp b/src/osgUtil/RenderLeaf.cpp
+index 5905c02..835f1c8 100644
+--- a/src/osgUtil/RenderLeaf.cpp
++++ b/src/osgUtil/RenderLeaf.cpp
+@@ -13,10 +13,27 @@
+ #include <osgUtil/RenderLeaf>
+ #include <osgUtil/StateGraph>
+ #include <osg/Notify>
++#include <osg/Timer>
++#include <osg/FrameStamp>
+ 
+ using namespace osg;
+ using namespace osgUtil;
+ 
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++static double ps5LeafStateMs, ps5LeafDrawMs;
++static unsigned ps5LeafCount;
++extern "C" void ps5_osg_leaf_reset(void)
++{
++    ps5LeafStateMs = ps5LeafDrawMs = 0.0;
++    ps5LeafCount = 0;
++}
++extern "C" void ps5_osg_leaf_report(unsigned frame)
++{
++    OSG_NOTICE << "[ps5-osg-leaf] frame=" << frame << " leaves=" << ps5LeafCount
++               << " state_ms=" << ps5LeafStateMs << " drawable_ms=" << ps5LeafDrawMs << std::endl;
++}
++#endif
++
+ void RenderLeaf::render(osg::RenderInfo& renderInfo,RenderLeaf* previous)
+ {
+     osg::State& state = *renderInfo.getState();
+@@ -28,6 +45,13 @@ void RenderLeaf::render(osg::RenderInfo& renderInfo,RenderLeaf* previous)
+         return;
+     }
+ 
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    const osg::FrameStamp* ps5Stamp = state.getFrameStamp();
++    const unsigned ps5Frame = ps5Stamp ? ps5Stamp->getFrameNumber() : 0;
++    const bool ps5Sample = ps5Frame <= 3 || ps5Frame % 60 == 0;
++    osg::Timer* ps5Timer = osg::Timer::instance();
++    const osg::Timer_t ps5LeafStart = ps5Sample ? ps5Timer->tick() : 0;
++#endif
+     if (previous)
+     {
+ 
+@@ -60,7 +84,17 @@ void RenderLeaf::render(osg::RenderInfo& renderInfo,RenderLeaf* previous)
+         if (state.getUseModelViewAndProjectionUniforms()) state.applyModelViewAndProjectionUniformsIfRequired();
+ 
+         // draw the drawable
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++        const osg::Timer_t ps5DrawStart = ps5Sample ? ps5Timer->tick() : 0;
++#endif
+         _drawable->draw(renderInfo);
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++        if (ps5Sample) {
++            ps5LeafStateMs += ps5Timer->delta_m(ps5LeafStart, ps5DrawStart);
++            ps5LeafDrawMs += ps5Timer->delta_m(ps5DrawStart, ps5Timer->tick());
++            ++ps5LeafCount;
++        }
++#endif
+     }
+     else
+     {
+@@ -78,7 +112,17 @@ void RenderLeaf::render(osg::RenderInfo& renderInfo,RenderLeaf* previous)
+         if (state.getUseModelViewAndProjectionUniforms()) state.applyModelViewAndProjectionUniformsIfRequired();
+ 
+         // draw the drawable
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++        const osg::Timer_t ps5DrawStart = ps5Sample ? ps5Timer->tick() : 0;
++#endif
+         _drawable->draw(renderInfo);
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++        if (ps5Sample) {
++            ps5LeafStateMs += ps5Timer->delta_m(ps5LeafStart, ps5DrawStart);
++            ps5LeafDrawMs += ps5Timer->delta_m(ps5DrawStart, ps5Timer->tick());
++            ++ps5LeafCount;
++        }
++#endif
+     }
+ 
+     if (_dynamic)
+diff --git a/src/osgUtil/tristripper/include/detail/graph_array.h b/src/osgUtil/tristripper/include/detail/graph_array.h
+index dc1f380..29831a4 100644
+--- a/src/osgUtil/tristripper/include/detail/graph_array.h
++++ b/src/osgUtil/tristripper/include/detail/graph_array.h
+@@ -446,7 +446,7 @@ inline void graph_array<N>::swap(graph_type & Right)
+ template <class N>
+ inline void unmark_nodes(graph_array<N> & G)
+ {
+-    std::for_each(G.begin(), G.end(), std::mem_fun_ref(&graph_array<N>::node::unmark));
++    std::for_each(G.begin(), G.end(), [](typename graph_array<N>::node& node) { node.unmark(); });
+ }
+ 
+ 
+diff --git a/src/osgViewer/Renderer.cpp b/src/osgViewer/Renderer.cpp
+index ab6e184..459fb0f 100644
+--- a/src/osgViewer/Renderer.cpp
++++ b/src/osgViewer/Renderer.cpp
+@@ -825,8 +825,16 @@ void Renderer::draw()
+     DEBUG_MESSAGE<<"end draw() "<<this<<std::endl;
+ }
+ 
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++extern "C" void ps5_osg_leaf_reset(void);
++extern "C" void ps5_osg_leaf_report(unsigned);
++#endif
++
+ void Renderer::cull_draw()
+ {
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    const osg::Timer_t ps5RendererStart = osg::Timer::instance()->tick();
++#endif
+     DEBUG_MESSAGE<<"cull_draw() "<<this<<std::endl;
+ 
+     osgUtil::SceneView* sceneView = _sceneView[0].get();
+@@ -892,6 +900,9 @@ void Renderer::cull_draw()
+         _querySupport->beginQuery(frameNumber, state);
+     }
+ 
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    if (frameNumber <= 3 || frameNumber % 60 == 0) ps5_osg_leaf_reset();
++#endif
+     osg::Timer_t beforeDrawTick;
+ 
+     if (_serializeDraw)
+@@ -914,6 +925,9 @@ void Renderer::cull_draw()
+     }
+ 
+     osg::Timer_t afterDrawTick = osg::Timer::instance()->tick();
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    if (frameNumber <= 3 || frameNumber % 60 == 0) ps5_osg_leaf_report(frameNumber);
++#endif
+ 
+     if (stats && stats->collectStats("rendering"))
+     {
+@@ -928,6 +942,13 @@ void Renderer::cull_draw()
+         stats->setAttribute(frameNumber, "Draw traversal time taken", osg::Timer::instance()->delta_s(beforeDrawTick, afterDrawTick));
+     }
+ 
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    if (frameNumber <= 3 || frameNumber % 60 == 0)
++        OSG_NOTICE << "[ps5-osg-renderer] frame=" << frameNumber
++                   << " setup_ms=" << osg::Timer::instance()->delta_m(ps5RendererStart, beforeCullTick)
++                   << " cull_ms=" << osg::Timer::instance()->delta_m(beforeCullTick, afterCullTick)
++                   << " draw_ms=" << osg::Timer::instance()->delta_m(beforeDrawTick, afterDrawTick) << std::endl;
++#endif
+     DEBUG_MESSAGE<<"end cull_draw() "<<this<<std::endl;
+ 
+ }
+diff --git a/src/osgViewer/ViewerBase.cpp b/src/osgViewer/ViewerBase.cpp
+index 8b4ffe2..e3121c2 100644
+--- a/src/osgViewer/ViewerBase.cpp
++++ b/src/osgViewer/ViewerBase.cpp
+@@ -751,6 +751,10 @@ void ViewerBase::frame(double simulationTime)
+ 
+ void ViewerBase::renderingTraversals()
+ {
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    osg::Timer* ps5Timer = osg::Timer::instance();
++    const osg::Timer_t ps5Start = ps5Timer->tick();
++#endif
+     Contexts contexts;
+     getContexts(contexts);
+ 
+@@ -865,6 +869,9 @@ void ViewerBase::renderingTraversals()
+     // dispatch the rendering threads
+     if (_startRenderingBarrier.valid()) _startRenderingBarrier->block();
+ 
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    const osg::Timer_t ps5CullStart = ps5Timer->tick();
++#endif
+     // reset any double buffer graphics objects
+     for(Cameras::iterator camItr = cameras.begin();
+         camItr != cameras.end();
+@@ -881,6 +888,9 @@ void ViewerBase::renderingTraversals()
+         }
+     }
+ 
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    const osg::Timer_t ps5DrawStart = ps5Timer->tick();
++#endif
+     for(itr = contexts.begin();
+         itr != contexts.end() && !_done;
+         ++itr)
+@@ -893,6 +903,9 @@ void ViewerBase::renderingTraversals()
+         }
+     }
+ 
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    const osg::Timer_t ps5SwapStart = ps5Timer->tick();
++#endif
+     // OSG_NOTICE<<"Joing _endRenderingDispatchBarrier block "<<_endRenderingDispatchBarrier.get()<<std::endl;
+ 
+     // wait till the rendering dispatch is done.
+@@ -910,6 +923,9 @@ void ViewerBase::renderingTraversals()
+         }
+     }
+ 
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    const osg::Timer_t ps5SwapEnd = ps5Timer->tick();
++#endif
+     for(Scenes::iterator sitr = scenes.begin();
+         sitr != scenes.end();
+         ++sitr)
+@@ -948,6 +964,15 @@ void ViewerBase::renderingTraversals()
+         getViewerStats()->setAttribute(frameNumber, "Rendering traversals time taken", endRenderingTraversals-beginRenderingTraversals);
+     }
+ 
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    if (frameNumber <= 3 || frameNumber % 60 == 0)
++        OSG_NOTICE << "[ps5-osg-phase] frame=" << frameNumber
++                   << " setup_ms=" << ps5Timer->delta_m(ps5Start, ps5CullStart)
++                   << " cull_ms=" << ps5Timer->delta_m(ps5CullStart, ps5DrawStart)
++                   << " operations_ms=" << ps5Timer->delta_m(ps5DrawStart, ps5SwapStart)
++                   << " swap_ms=" << ps5Timer->delta_m(ps5SwapStart, ps5SwapEnd)
++                   << " tail_ms=" << ps5Timer->delta_m(ps5SwapEnd, ps5Timer->tick()) << std::endl;
++#endif
+     _requestRedraw = false;
+ }
+ 
+diff --git a/src/osgWrappers/deprecated-dotosg/CMakeLists.txt b/src/osgWrappers/deprecated-dotosg/CMakeLists.txt
+index 074126b..206736d 100644
+--- a/src/osgWrappers/deprecated-dotosg/CMakeLists.txt
++++ b/src/osgWrappers/deprecated-dotosg/CMakeLists.txt
+@@ -33,6 +33,7 @@ SET(TARGET_COMMON_LIBRARIES
+ )
+ 
+ ADD_SUBDIRECTORY(osg)
++IF(NOT PS5)
+ ADD_SUBDIRECTORY(osgParticle)
+ ADD_SUBDIRECTORY(osgAnimation)
+ ADD_SUBDIRECTORY(osgFX)
+@@ -44,3 +45,5 @@ ADD_SUBDIRECTORY(osgTerrain)
+ ADD_SUBDIRECTORY(osgVolume)
+ ADD_SUBDIRECTORY(osgWidget)
+ 
++
++ENDIF()
+diff --git a/src/osgWrappers/serializers/CMakeLists.txt b/src/osgWrappers/serializers/CMakeLists.txt
+index 22d49e3..c89d228 100644
+--- a/src/osgWrappers/serializers/CMakeLists.txt
++++ b/src/osgWrappers/serializers/CMakeLists.txt
+@@ -46,6 +46,7 @@ SET(TARGET_COMMON_LIBRARIES
+ )
+ 
+ ADD_SUBDIRECTORY(osg)
++IF(NOT PS5)
+ ADD_SUBDIRECTORY(osgUtil)
+ ADD_SUBDIRECTORY(osgAnimation)
+ ADD_SUBDIRECTORY(osgFX)
+@@ -59,3 +60,5 @@ ADD_SUBDIRECTORY(osgText)
+ ADD_SUBDIRECTORY(osgVolume)
+ ADD_SUBDIRECTORY(osgViewer)
+ ADD_SUBDIRECTORY(osgUI)
++
++ENDIF()

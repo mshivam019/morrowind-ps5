@@ -1,0 +1,21 @@
+--- a/core/helpers.cpp
++++ b/core/helpers.cpp
+@@ -209,6 +209,10 @@
+ 
+ const PathNamePair &GetProcBinary()
+ {
++#ifdef __PROSPERO__
++    static const PathNamePair procbin{"/app0", "eboot.bin"};
++    return procbin;
++#else
+     static al::optional<PathNamePair> procbin;
+     if(procbin) return *procbin;
+ 
+@@ -291,6 +295,7 @@
+ 
+     TRACE("Got binary: \"%s\", \"%s\"\n", procbin->path.c_str(), procbin->fname.c_str());
+     return *procbin;
++#endif
+ }
+ 
+ namespace {

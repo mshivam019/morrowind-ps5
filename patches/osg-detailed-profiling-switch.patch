@@ -1,0 +1,232 @@
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index d121eb0..94531d3 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -1,3 +1,9 @@
++# Detailed PS5 timing is opt-in; the engine keeps its own sparse frame timings.
++OPTION(PS5_OSG_DETAILED_PROFILE "Enable detailed PS5 OSG leaf and traversal timings" OFF)
++IF(PS5_OSG_DETAILED_PROFILE)
++    ADD_DEFINITIONS(-DPS5_OSG_DETAILED_PROFILE=1)
++ENDIF()
++
+ IF(ANDROID)
+     SET(MODULE_USER_STATIC_OR_DYNAMIC ${OPENSCENEGRAPH_USER_DEFINED_DYNAMIC_OR_STATIC})
+ ENDIF(ANDROID)
+@@ -30,6 +36,9 @@ FOREACH( mylibfolder
+         osgPlugins
+     )
+ 
++    if(PS5 AND mylibfolder MATCHES "^(osgManipulator|osgUI|osgVolume|osgTerrain|osgWidget|osgPresentation)$")
++        continue()
++    endif()
+     ADD_SUBDIRECTORY(${mylibfolder})
+ 
+ ENDFOREACH()
+diff --git a/src/osgUtil/RenderLeaf.cpp b/src/osgUtil/RenderLeaf.cpp
+index 5905c02..835f1c8 100644
+--- a/src/osgUtil/RenderLeaf.cpp
++++ b/src/osgUtil/RenderLeaf.cpp
+@@ -13,10 +13,27 @@
+ #include <osgUtil/RenderLeaf>
+ #include <osgUtil/StateGraph>
+ #include <osg/Notify>
++#include <osg/Timer>
++#include <osg/FrameStamp>
+ 
+ using namespace osg;
+ using namespace osgUtil;
+ 
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++static double ps5LeafStateMs, ps5LeafDrawMs;
++static unsigned ps5LeafCount;
++extern "C" void ps5_osg_leaf_reset(void)
++{
++    ps5LeafStateMs = ps5LeafDrawMs = 0.0;
++    ps5LeafCount = 0;
++}
++extern "C" void ps5_osg_leaf_report(unsigned frame)
++{
++    OSG_NOTICE << "[ps5-osg-leaf] frame=" << frame << " leaves=" << ps5LeafCount
++               << " state_ms=" << ps5LeafStateMs << " drawable_ms=" << ps5LeafDrawMs << std::endl;
++}
++#endif
++
+ void RenderLeaf::render(osg::RenderInfo& renderInfo,RenderLeaf* previous)
+ {
+     osg::State& state = *renderInfo.getState();
+@@ -28,6 +45,13 @@ void RenderLeaf::render(osg::RenderInfo& renderInfo,RenderLeaf* previous)
+         return;
+     }
+ 
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    const osg::FrameStamp* ps5Stamp = state.getFrameStamp();
++    const unsigned ps5Frame = ps5Stamp ? ps5Stamp->getFrameNumber() : 0;
++    const bool ps5Sample = ps5Frame <= 3 || ps5Frame % 60 == 0;
++    osg::Timer* ps5Timer = osg::Timer::instance();
++    const osg::Timer_t ps5LeafStart = ps5Sample ? ps5Timer->tick() : 0;
++#endif
+     if (previous)
+     {
+ 
+@@ -60,7 +84,17 @@ void RenderLeaf::render(osg::RenderInfo& renderInfo,RenderLeaf* previous)
+         if (state.getUseModelViewAndProjectionUniforms()) state.applyModelViewAndProjectionUniformsIfRequired();
+ 
+         // draw the drawable
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++        const osg::Timer_t ps5DrawStart = ps5Sample ? ps5Timer->tick() : 0;
++#endif
+         _drawable->draw(renderInfo);
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++        if (ps5Sample) {
++            ps5LeafStateMs += ps5Timer->delta_m(ps5LeafStart, ps5DrawStart);
++            ps5LeafDrawMs += ps5Timer->delta_m(ps5DrawStart, ps5Timer->tick());
++            ++ps5LeafCount;
++        }
++#endif
+     }
+     else
+     {
+@@ -78,7 +112,17 @@ void RenderLeaf::render(osg::RenderInfo& renderInfo,RenderLeaf* previous)
+         if (state.getUseModelViewAndProjectionUniforms()) state.applyModelViewAndProjectionUniformsIfRequired();
+ 
+         // draw the drawable
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++        const osg::Timer_t ps5DrawStart = ps5Sample ? ps5Timer->tick() : 0;
++#endif
+         _drawable->draw(renderInfo);
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++        if (ps5Sample) {
++            ps5LeafStateMs += ps5Timer->delta_m(ps5LeafStart, ps5DrawStart);
++            ps5LeafDrawMs += ps5Timer->delta_m(ps5DrawStart, ps5Timer->tick());
++            ++ps5LeafCount;
++        }
++#endif
+     }
+ 
+     if (_dynamic)
+diff --git a/src/osgViewer/Renderer.cpp b/src/osgViewer/Renderer.cpp
+index ab6e184..459fb0f 100644
+--- a/src/osgViewer/Renderer.cpp
++++ b/src/osgViewer/Renderer.cpp
+@@ -825,8 +825,16 @@ void Renderer::draw()
+     DEBUG_MESSAGE<<"end draw() "<<this<<std::endl;
+ }
+ 
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++extern "C" void ps5_osg_leaf_reset(void);
++extern "C" void ps5_osg_leaf_report(unsigned);
++#endif
++
+ void Renderer::cull_draw()
+ {
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    const osg::Timer_t ps5RendererStart = osg::Timer::instance()->tick();
++#endif
+     DEBUG_MESSAGE<<"cull_draw() "<<this<<std::endl;
+ 
+     osgUtil::SceneView* sceneView = _sceneView[0].get();
+@@ -892,6 +900,9 @@ void Renderer::cull_draw()
+         _querySupport->beginQuery(frameNumber, state);
+     }
+ 
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    if (frameNumber <= 3 || frameNumber % 60 == 0) ps5_osg_leaf_reset();
++#endif
+     osg::Timer_t beforeDrawTick;
+ 
+     if (_serializeDraw)
+@@ -914,6 +925,9 @@ void Renderer::cull_draw()
+     }
+ 
+     osg::Timer_t afterDrawTick = osg::Timer::instance()->tick();
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    if (frameNumber <= 3 || frameNumber % 60 == 0) ps5_osg_leaf_report(frameNumber);
++#endif
+ 
+     if (stats && stats->collectStats("rendering"))
+     {
+@@ -928,6 +942,13 @@ void Renderer::cull_draw()
+         stats->setAttribute(frameNumber, "Draw traversal time taken", osg::Timer::instance()->delta_s(beforeDrawTick, afterDrawTick));
+     }
+ 
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    if (frameNumber <= 3 || frameNumber % 60 == 0)
++        OSG_NOTICE << "[ps5-osg-renderer] frame=" << frameNumber
++                   << " setup_ms=" << osg::Timer::instance()->delta_m(ps5RendererStart, beforeCullTick)
++                   << " cull_ms=" << osg::Timer::instance()->delta_m(beforeCullTick, afterCullTick)
++                   << " draw_ms=" << osg::Timer::instance()->delta_m(beforeDrawTick, afterDrawTick) << std::endl;
++#endif
+     DEBUG_MESSAGE<<"end cull_draw() "<<this<<std::endl;
+ 
+ }
+diff --git a/src/osgViewer/ViewerBase.cpp b/src/osgViewer/ViewerBase.cpp
+index 8b4ffe2..e3121c2 100644
+--- a/src/osgViewer/ViewerBase.cpp
++++ b/src/osgViewer/ViewerBase.cpp
+@@ -751,6 +751,10 @@ void ViewerBase::frame(double simulationTime)
+ 
+ void ViewerBase::renderingTraversals()
+ {
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    osg::Timer* ps5Timer = osg::Timer::instance();
++    const osg::Timer_t ps5Start = ps5Timer->tick();
++#endif
+     Contexts contexts;
+     getContexts(contexts);
+ 
+@@ -865,6 +869,9 @@ void ViewerBase::renderingTraversals()
+     // dispatch the rendering threads
+     if (_startRenderingBarrier.valid()) _startRenderingBarrier->block();
+ 
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    const osg::Timer_t ps5CullStart = ps5Timer->tick();
++#endif
+     // reset any double buffer graphics objects
+     for(Cameras::iterator camItr = cameras.begin();
+         camItr != cameras.end();
+@@ -881,6 +888,9 @@ void ViewerBase::renderingTraversals()
+         }
+     }
+ 
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    const osg::Timer_t ps5DrawStart = ps5Timer->tick();
++#endif
+     for(itr = contexts.begin();
+         itr != contexts.end() && !_done;
+         ++itr)
+@@ -893,6 +903,9 @@ void ViewerBase::renderingTraversals()
+         }
+     }
+ 
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    const osg::Timer_t ps5SwapStart = ps5Timer->tick();
++#endif
+     // OSG_NOTICE<<"Joing _endRenderingDispatchBarrier block "<<_endRenderingDispatchBarrier.get()<<std::endl;
+ 
+     // wait till the rendering dispatch is done.
+@@ -910,6 +923,9 @@ void ViewerBase::renderingTraversals()
+         }
+     }
+ 
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    const osg::Timer_t ps5SwapEnd = ps5Timer->tick();
++#endif
+     for(Scenes::iterator sitr = scenes.begin();
+         sitr != scenes.end();
+         ++sitr)
+@@ -948,6 +964,15 @@ void ViewerBase::renderingTraversals()
+         getViewerStats()->setAttribute(frameNumber, "Rendering traversals time taken", endRenderingTraversals-beginRenderingTraversals);
+     }
+ 
++#if defined(__PROSPERO__) && defined(PS5_OSG_DETAILED_PROFILE) && PS5_OSG_DETAILED_PROFILE
++    if (frameNumber <= 3 || frameNumber % 60 == 0)
++        OSG_NOTICE << "[ps5-osg-phase] frame=" << frameNumber
++                   << " setup_ms=" << ps5Timer->delta_m(ps5Start, ps5CullStart)
++                   << " cull_ms=" << ps5Timer->delta_m(ps5CullStart, ps5DrawStart)
++                   << " operations_ms=" << ps5Timer->delta_m(ps5DrawStart, ps5SwapStart)
++                   << " swap_ms=" << ps5Timer->delta_m(ps5SwapStart, ps5SwapEnd)
++                   << " tail_ms=" << ps5Timer->delta_m(ps5SwapEnd, ps5Timer->tick()) << std::endl;
++#endif
+     _requestRedraw = false;
+ }
+ 

@@ -1,0 +1,5 @@
+# Unified diff context lines intentionally contain a single space.
+*.patch whitespace=-blank-at-eol,-blank-at-eof
+
+# Preserve verbatim upstream license formatting.
+LICENSES/** whitespace=-trailing-space,-blank-at-eof

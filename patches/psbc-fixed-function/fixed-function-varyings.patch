@@ -1,0 +1,187 @@
+--- a/src/amd/vulkan/nir/radv_nir_lower_io.c
++++ b/src/amd/vulkan/nir/radv_nir_lower_io.c
+@@ -11,6 +11,7 @@
+ #include "nir_builder.h"
+ #include "nir_tcs_info.h"
+ #include "radv_nir.h"
++#include <stdio.h>
+ #include "radv_shader.h"
+ 
+ static int
+@@ -58,6 +59,7 @@
+    RADV_IO_SLOT_CLIP_DIST1,
+    RADV_IO_SLOT_PSIZ,
+    RADV_IO_SLOT_VAR0, /* 0..31 */
++   RADV_IO_SLOT_LEGACY0 = RADV_IO_SLOT_VAR0 + 32,
+ };
+ 
+ unsigned
+@@ -76,7 +78,27 @@
+       return RADV_IO_SLOT_CLIP_DIST1;
+    case VARYING_SLOT_PSIZ:
+       return RADV_IO_SLOT_PSIZ;
++   case VARYING_SLOT_COL0:
++   case VARYING_SLOT_COL1:
++   case VARYING_SLOT_FOGC:
++   case VARYING_SLOT_TEX0:
++   case VARYING_SLOT_TEX1:
++   case VARYING_SLOT_TEX2:
++   case VARYING_SLOT_TEX3:
++   case VARYING_SLOT_TEX4:
++   case VARYING_SLOT_TEX5:
++   case VARYING_SLOT_TEX6:
++   case VARYING_SLOT_TEX7:
++   case VARYING_SLOT_BFC0:
++   case VARYING_SLOT_BFC1:
++      /* OpenGL compatibility shaders use dedicated legacy varying slots.
++       * Keep these disjoint from all 32 generic slots in standalone stages. */
++      return RADV_IO_SLOT_LEGACY0 + semantic - VARYING_SLOT_COL0;
+    default:
++      if (semantic < VARYING_SLOT_VAR0 || semantic > VARYING_SLOT_VAR31) {
++         fprintf(stderr, "PSBC unsupported unlinked IO semantic=%u\n", semantic);
++         fflush(stderr);
++      }
+       assert(semantic >= VARYING_SLOT_VAR0 && semantic <= VARYING_SLOT_VAR31);
+       return RADV_IO_SLOT_VAR0 + (semantic - VARYING_SLOT_VAR0);
+    }
+--- a/src/amd/vulkan/radv_shader_info.c
++++ b/src/amd/vulkan/radv_shader_info.c
+@@ -394,7 +394,9 @@
+                       unsigned extra_offset)
+ {
+    u_foreach_bit64 (idx, mask) {
+-      if (idx >= VARYING_SLOT_VAR0 || idx == VARYING_SLOT_LAYER || idx == VARYING_SLOT_PRIMITIVE_ID ||
++      if ((idx >= VARYING_SLOT_COL0 && idx <= VARYING_SLOT_TEX7) ||
++          idx == VARYING_SLOT_BFC0 || idx == VARYING_SLOT_BFC1 ||
++          idx >= VARYING_SLOT_VAR0 || idx == VARYING_SLOT_LAYER || idx == VARYING_SLOT_PRIMITIVE_ID ||
+           idx == VARYING_SLOT_VIEWPORT)
+          assign_outinfo_param(outinfo, idx, total_param_exports, extra_offset);
+    }
+--- a/libpsbc/psbc_compile.c
++++ b/libpsbc/psbc_compile.c
+@@ -621,9 +621,21 @@
+     return 0;
+ }
+ 
++/* AGC uses only equality of producer/consumer match keys. Reserve keys
++ * 49..62 for compatibility varyings, after generic 15..46 and built-ins 47/48.
++ * Keep hardware parameter limits at 32; semantic namespaces are independent. */
++static unsigned ps5_varying_match_key(unsigned location) {
++    if (location >= VARYING_SLOT_VAR0 && location <= VARYING_SLOT_VAR31)
++        return 15u + location - VARYING_SLOT_VAR0;
++    if ((location >= VARYING_SLOT_COL0 && location <= VARYING_SLOT_TEX7) ||
++        location == VARYING_SLOT_BFC0 || location == VARYING_SLOT_BFC1)
++        return 49u + location - VARYING_SLOT_COL0;
++    return UINT_MAX;
++}
++
+ typedef struct {
+-    uint8_t modes[PSBC_MAX_SEMANTICS];
+-    uint8_t flat_attribute[PSBC_MAX_SEMANTICS];
++    uint8_t modes[VARYING_SLOT_MAX];
++    uint8_t flat_attribute[VARYING_SLOT_MAX];
+     uint8_t primitive_id_attribute;
+ } Ps5MixedInputState;
+ 
+@@ -637,11 +649,11 @@
+     if (!mode)
+         return false;
+     const nir_io_semantics io = nir_intrinsic_io_semantics(intrinsic);
+-    if (io.location < VARYING_SLOT_VAR0)
++    if (ps5_varying_match_key(io.location) == UINT_MAX)
+         return false;
+     for (unsigned slot = 0; slot < io.num_slots; ++slot) {
+-        const unsigned location = io.location - VARYING_SLOT_VAR0 + slot;
+-        if (location < PSBC_MAX_SEMANTICS)
++        const unsigned location = io.location + slot;
++        if (location < VARYING_SLOT_MAX)
+             ((Ps5MixedInputState*)data)->modes[location] |= mode;
+     }
+     return false;
+@@ -662,10 +674,10 @@
+         nir_intrinsic_set_base(intrinsic, state->primitive_id_attribute);
+         return true;
+     }
+-    if (io.location < VARYING_SLOT_VAR0 || io.num_slots != 1)
++    if (ps5_varying_match_key(io.location) == UINT_MAX || io.num_slots != 1)
+         return false;
+-    const unsigned location = io.location - VARYING_SLOT_VAR0;
+-    if (location >= PSBC_MAX_SEMANTICS || state->modes[location] != 3)
++    const unsigned location = io.location;
++    if (location >= VARYING_SLOT_MAX || state->modes[location] != 3)
+         return false;
+     nir_intrinsic_set_base(intrinsic, state->flat_attribute[location]);
+     return true;
+@@ -680,7 +692,7 @@
+                                  nir_metadata_all, &state);
+     const bool per_primitive_id = primitive_id_per_primitive && info->ps.prim_id_input;
+     unsigned next = info->ps.num_inputs - per_primitive_id;
+-    for (unsigned location = 0; location < PSBC_MAX_SEMANTICS; ++location) {
++    for (unsigned location = 0; location < VARYING_SLOT_MAX; ++location) {
+         if (state.modes[location] != 3)
+             continue;
+         if (next >= PSBC_MAX_SEMANTICS)
+@@ -758,18 +770,18 @@
+                     return false;
+                 if (point_coord && (io.num_slots != 1 || mode != 2))
+                     return false;
+-                if (!primitive_id && !point_coord && io.location < VARYING_SLOT_VAR0)
++                if (!primitive_id && !point_coord && ps5_varying_match_key(io.location) == UINT_MAX)
+                     continue;
+                 for (uint32_t slot = 0; slot < io.num_slots; ++slot) {
+                     const uint32_t location =
+-                        (primitive_id || point_coord) ? 0 : io.location - VARYING_SLOT_VAR0 + slot;
++                        (primitive_id || point_coord) ? 0 : ps5_varying_match_key(io.location + slot);
+                     const uint32_t attribute =
+                         nir_intrinsic_base(intrin) + slot;
+-                    if (location >= PSBC_MAX_SEMANTICS ||
++                    if (location == UINT_MAX ||
+                         attribute >= generic_count)
+                         return false;
+                     uint32_t word = point_coord ? PSBC_SEMANTIC_POINT_COORD :
+-                        primitive_id ? PSBC_SEMANTIC_PRIMITIVE_ID : 15u + location;
++                        primitive_id ? PSBC_SEMANTIC_PRIMITIVE_ID : location;
+                     if (mode == 1 && !(primitive_id && primitive_id_per_primitive))
+                         word |= BITFIELD_BIT(22);
+                     if (seen[attribute] &&
+@@ -793,12 +805,17 @@
+ 
+ static bool fill_output_semantics(const struct radv_shader_info* info,
+                                   PsbcShaderMetadata* metadata) {
+-    for (unsigned semantic = 0; semantic < PSBC_MAX_SEMANTICS; ++semantic) {
++    for (unsigned semantic = 0; semantic < VARYING_SLOT_MAX; ++semantic) {
++        const unsigned key = ps5_varying_match_key(semantic);
++        if (key == UINT_MAX)
++            continue;
+         const uint8_t parameter =
+-            info->outinfo.vs_output_param_offset[VARYING_SLOT_VAR0 + semantic];
++            info->outinfo.vs_output_param_offset[semantic];
+         if (parameter < PSBC_MAX_SEMANTICS) {
++            if (metadata->output_semantic_count >= PSBC_MAX_SEMANTICS)
++                return false;
+             metadata->output_semantics[metadata->output_semantic_count++] =
+-                (15u + semantic) | ((uint32_t)parameter << 8);
++                key | ((uint32_t)parameter << 8);
+         }
+     }
+     const uint8_t primitive_id =
+@@ -2268,6 +2285,19 @@
+     }
+     nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
+     radv_nir_lower_io(nir);
++    if (input_nir && stage->next_stage == MESA_SHADER_FRAGMENT &&
++        (nir->info.outputs_written & VARYING_BIT_CLIP_VERTEX)) {
++        /* Gallium's state tracker lowers enabled user clip planes into
++         * CLIP_DIST before this compiler receives the shader. With no active
++         * planes, compatibility GLSL can retain gl_ClipVertex even though it
++         * is neither a rasterization output nor a fragment varying. Remove
++         * only that final-stage output; keep generated clip distances and
++         * intermediate VS-to-GS outputs intact. The NIR helper retains XFB. */
++        NIR_PASS(_, nir, nir_remove_outputs, MESA_SHADER_FRAGMENT,
++                 VARYING_BIT_CLIP_VERTEX, VARYING_BIT_CLIP_VERTEX);
++        NIR_PASS(_, nir, nir_opt_dce);
++        nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
++    }
+     stage->nir = nir;
+     return nir;
+ }

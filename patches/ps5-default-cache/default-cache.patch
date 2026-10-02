@@ -1,0 +1,90 @@
+--- a/ps5_agc_native_runtime.c
++++ b/ps5_agc_native_runtime.c
+@@ -2131,6 +2131,29 @@
+ #endif
+ }
+ 
++/* The submit lock serializes this cache. Cache row locations, not values:
++ * direct reads preserve changes to AGC defaults without repeated searches. */
++static struct {
++    void *defaults;
++    agc_register_t **blocks;
++    agc_register_t *base;
++    uint32_t count, rows[16];
++    int valid;
++} target_default_cache;
++#ifdef PS5_DRAW_PROFILE
++static uint64_t target_default_cache_hits, target_default_cache_misses;
++#endif
++/* Same submission thread as ps5_agc_gate2_profile_snapshot. */
++void ps5_agc_gate2_default_cache_snapshot(uint64_t *hits, uint64_t *misses)
++{
++#ifdef PS5_DRAW_PROFILE
++    if (hits) *hits = target_default_cache_hits;
++    if (misses) *misses = target_default_cache_misses;
++#else
++    if (hits) *hits = 0;
++    if (misses) *misses = 0;
++#endif
++}
+ static int append_target_state(agc_register_t *cx, uint32_t *cx_count,
+                                void *defaults, void *target)
+ {
+@@ -2141,21 +2164,48 @@
+     agc_register_t **blocks = *(agc_register_t ***)defaults;
+     uint32_t default_count = *(uint32_t *)((uint8_t *)defaults + 0x20);
+     uint32_t index;
++    int hit;
+ 
+     if (!blocks || !blocks[0])
+         return -1;
+-    for (index = 0; index < 16; ++index) {
+-        uint32_t candidate;
+-        cx[index] = (agc_register_t){target_offsets[index], 0, 0};
+-        for (candidate = 0; candidate < default_count; ++candidate) {
+-            if (blocks[0][candidate].offset == target_offsets[index]) {
+-                cx[index].value = blocks[0][candidate].value;
++    hit = target_default_cache.valid &&
++          target_default_cache.defaults == defaults &&
++          target_default_cache.blocks == blocks &&
++          target_default_cache.base == blocks[0] &&
++          target_default_cache.count == default_count;
++    /* Also tolerate replacement/reordering at an unchanged address. */
++    if (hit) {
++        for (index = 0; index < 16; ++index) {
++            if (blocks[0][target_default_cache.rows[index]].offset != target_offsets[index]) {
++                hit = 0;
+                 break;
+             }
+         }
+-        if (candidate == default_count)
+-            return -1;
+-    }
++    }
++    if (!hit) {
++        target_default_cache.valid = 0;
++        for (index = 0; index < 16; ++index) {
++            uint32_t candidate;
++            for (candidate = 0; candidate < default_count; ++candidate)
++                if (blocks[0][candidate].offset == target_offsets[index])
++                    break;
++            if (candidate == default_count)
++                return -1;
++            target_default_cache.rows[index] = candidate;
++        }
++        target_default_cache.defaults = defaults;
++        target_default_cache.blocks = blocks;
++        target_default_cache.base = blocks[0];
++        target_default_cache.count = default_count;
++        target_default_cache.valid = 1;
++    }
++#ifdef PS5_DRAW_PROFILE
++    if (hit) ++target_default_cache_hits;
++    else ++target_default_cache_misses;
++#endif
++    for (index = 0; index < 16; ++index)
++        cx[index] = (agc_register_t){target_offsets[index], 0,
++                      blocks[0][target_default_cache.rows[index]].value};
+ 
+     cx[0].value = (uint32_t)((uintptr_t)target >> 8);
+     cx[1].value &= 0xfc001fffu;

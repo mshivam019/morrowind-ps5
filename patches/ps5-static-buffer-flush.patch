@@ -1,0 +1,85 @@
+--- a/patches/ps5-draw-batching/ps5_screen.c
++++ b/patches/ps5-draw-batching/ps5_screen.c
+@@ -2632,6 +2632,38 @@
+ #endif
+ }
+ 
++/* Static VBO/EBO storage has a tracked CPU-write epoch. Whole-backing flushes
++ * are necessary before clearing dirty: later draws may select other ranges. */
++static bool
++ps5_static_buffer_flush_cacheable(const struct ps5_resource *resource)
++{
++   return resource && resource->base.target == PIPE_BUFFER &&
++      (resource->base.bind & (PIPE_BIND_VERTEX_BUFFER | PIPE_BIND_INDEX_BUFFER)) &&
++      !(resource->base.bind & (PIPE_BIND_SHADER_BUFFER | PIPE_BIND_STREAM_OUTPUT |
++                              PIPE_BIND_SHADER_IMAGE | PIPE_BIND_SAMPLER_VIEW)) &&
++      (resource->base.usage == PIPE_USAGE_DEFAULT ||
++       resource->base.usage == PIPE_USAGE_IMMUTABLE) &&
++      !(resource->base.flags & PS5_RESOURCE_FLAG_UNINITIALIZED) &&
++      resource->exclusive_buffer_storage && !resource->cpu_pointer_escaped &&
++      !resource->cpu_write_maps;
++}
++
++static void
++ps5_flush_vertex_index_backing(struct ps5_batch_flush_cache *batch,
++                               struct ps5_resource *resource,
++                               const void *data, size_t bytes,
++                               enum ps5_flush_group group)
++{
++   if (!ps5_static_buffer_flush_cacheable(resource)) {
++      ps5_flush_batch_backing(batch, 0, data, bytes, group);
++      return;
++   }
++   if (resource->cpu_dirty) {
++      ps5_flush_batch_backing(batch, 0, resource->data, resource->size, group);
++      resource->cpu_dirty = false;
++   }
++}
++
+ static bool
+ ps5_stage_packed_depth_samples(struct ps5_resource *resource,
+                                unsigned *base_stride)
+@@ -6870,7 +6902,7 @@
+ {
+    const int64_t started = os_time_get_nano();
+    void * result = ps5_transfer_map_profile_inner(context, base, level, usage, box, out_transfer);
+-   if (result && base->target != PIPE_BUFFER) {
++   if (result) {
+       struct ps5_resource *resource = (struct ps5_resource *)base;
+       if (usage & (PIPE_MAP_PERSISTENT | PIPE_MAP_COHERENT))
+          resource->cpu_pointer_escaped = true;
+@@ -7000,7 +7032,7 @@
+ ps5_transfer_unmap(struct pipe_context *context, struct pipe_transfer *transfer)
+ {
+    const int64_t started = os_time_get_nano();
+-   if (transfer->resource->target != PIPE_BUFFER && (transfer->usage & PIPE_MAP_WRITE)) {
++   if (transfer->usage & PIPE_MAP_WRITE) {
+       struct ps5_resource *resource = (struct ps5_resource *)transfer->resource;
+       assert(resource->cpu_write_maps);
+       --resource->cpu_write_maps;
+@@ -10047,7 +10079,7 @@
+             context->last_draw_status = -9;
+             return;
+          }
+-         ps5_flush_batch_backing(flush_cache, 0,
++         ps5_flush_vertex_index_backing(flush_cache, vertex_resource,
+                                  (const void *)vertex_address, binding_bytes[binding], PS5_FLUSH_VERTEX);
+          descriptor_index++;
+       }
+@@ -10601,7 +10633,7 @@
+ 
+       /* offset/count were checked against resource size before index scanning.
+        * The GPU receives precisely this selected index range. */
+-      ps5_flush_batch_backing(flush_cache, 0,
++      ps5_flush_vertex_index_backing(flush_cache, index_resource,
+          index_resource->data + index_offset, (size_t)draws[0].count * info->index_size, PS5_FLUSH_INDEX);
+       if (ps5_agc_gate2_set_index_buffer_typed)
+          rc = ps5_agc_gate2_set_index_buffer_typed(
+@@ -15721,6 +15753,7 @@
+    if (!buffer || buffer->base.target != PIPE_BUFFER || !data ||
+        offset > buffer->size || size > buffer->size - offset)
+       return;
++   ps5_mark_cpu_written(resource);
+    memcpy(buffer->data + offset, data, size);
+ }
+ 

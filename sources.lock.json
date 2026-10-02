@@ -1,0 +1,18 @@
+{
+  "openmw": {
+    "url": "https://github.com/OpenMW/openmw.git",
+    "commit": "f4bec41444214a7903bebd178389ca22ca13f646"
+  },
+  "deps/bullet": {
+    "url": "https://github.com/bulletphysics/bullet3.git",
+    "commit": "ebe1916b90acae8b13cd8c6b637d8327cdc64e94"
+  },
+  "deps/lz4": {
+    "url": "https://github.com/lz4/lz4.git",
+    "commit": "ebb370ca83af193212df4dcbadcc5d87bc0de2f0"
+  },
+  "deps/recastnavigation": {
+    "url": "https://github.com/OpenMW/recastnavigation.git",
+    "commit": "03259f3287ff8330f0d66fcd98d022edddffaa97"
+  }
+}

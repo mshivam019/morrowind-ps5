@@ -1,0 +1,15 @@
+--- a/patches/ps5-draw-batching/ps5_screen.c
++++ b/patches/ps5-draw-batching/ps5_screen.c
+@@ -11353,7 +11353,11 @@
+    context->descriptor_storage[0] = saved[1];
+    context->descriptor_storage[1] = saved[2];
+    handled = true;
+-   if (context->last_draw_status || ps5_deferred.count == PS5_MULTIDRAW_BATCH_CAPACITY)
++   /* Reuse only cached descriptor slots. Retirement completes before slot zero
++    * is reused, keeping memory bounded and avoiding uncached per-draw storage. */
++   if (context->last_draw_status ||
++       ps5_deferred.count == MIN2(PS5_MULTIDRAW_BATCH_CAPACITY,
++                                  PS5_DESCRIPTOR_CACHE_SLOTS))
+       ps5_draw_batch_flush_locked();
+ out:
+    for (unsigned stage = 0; stage < 3; ++stage)

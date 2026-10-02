@@ -1,0 +1,20 @@
+diff --git a/src/osg/Texture2D.cpp b/src/osg/Texture2D.cpp
+index 2aac8b2..a595df6 100644
+--- a/src/osg/Texture2D.cpp
++++ b/src/osg/Texture2D.cpp
+@@ -306,8 +306,13 @@ void Texture2D::apply(State& state) const
+              textureObject = generateAndAssignTextureObject(contextID, GL_TEXTURE_2D, _numMipmapLevels, texStorageSizedInternalFormat, _textureWidth, _textureHeight, 1, _borderWidth);
+              textureObject->bind();
+              applyTexParameters(GL_TEXTURE_2D, state);
+-             extensions->glTexStorage2D( GL_TEXTURE_2D, osg::maximum(_numMipmapLevels,1), texStorageSizedInternalFormat,
+-                      _textureWidth, _textureHeight);
++             // A matching pooled texture object may already own immutable storage.
++             if (!textureObject->isAllocated())
++             {
++                 extensions->glTexStorage2D( GL_TEXTURE_2D, osg::maximum(_numMipmapLevels,1), texStorageSizedInternalFormat,
++                          _textureWidth, _textureHeight);
++                 textureObject->setAllocated(true);
++             }
+          }
+          else
+          {

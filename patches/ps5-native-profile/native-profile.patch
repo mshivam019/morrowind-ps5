@@ -1,0 +1,43 @@
+--- a/platform/ps5_agc_native_runtime.c
++++ b/platform/ps5_agc_native_runtime.c
+@@ -18,6 +18,7 @@
+ #include <sys/mman.h>
+ 
+ #include <ps5/kernel.h>
++#include "ps5_agc_profile.h"
+ 
+ #if defined(PS5_DRAW_PROFILE) && (!defined(AGC_RUNTIME_PACKAGES) || !defined(AGC_TRIANGLE_SUBMIT))
+ #error "Draw profiling requires the submitting runtime backend"
+@@ -1237,6 +1238,32 @@
+ #define PS5_PROFILE_MARK(i) profile_ticks[i] = os_time_get_nano()
+ #endif
+ 
++int ps5_agc_gate2_profile_snapshot(struct ps5_agc_profile_snapshot *snapshot)
++{
++    if (!snapshot)
++        return 0;
++    memset(snapshot, 0, sizeof(*snapshot));
++#ifdef PS5_DRAW_PROFILE
++    memcpy(snapshot->prepare_ns, runtime_prepare_profile_ns, sizeof(snapshot->prepare_ns));
++    memcpy(snapshot->submit_ns, runtime_profile_ns, sizeof(snapshot->submit_ns));
++    memcpy(snapshot->present_ns, runtime_present_profile_ns, sizeof(snapshot->present_ns));
++    memcpy(snapshot->batch_ns, runtime_batch_profile_ns, sizeof(snapshot->batch_ns));
++    snapshot->prepare_calls = runtime_prepare_profile_calls;
++    snapshot->prepare_failures = runtime_prepare_profile_failures;
++    snapshot->submit_calls = runtime_profile_calls;
++    snapshot->submit_failures = runtime_profile_failures;
++    snapshot->submit_sleeps = runtime_profile_sleeps;
++    snapshot->present_calls = runtime_present_profile_calls;
++    snapshot->present_failures = runtime_present_profile_failures;
++    snapshot->batch_calls = runtime_batch_profile_calls;
++    snapshot->batch_failures = runtime_batch_profile_failures;
++    snapshot->batch_sleeps = runtime_batch_profile_sleeps;
++    return 1;
++#else
++    return 0;
++#endif
++}
++
+ static int64_t runtime_next_render_marker(void)
+ {
+     uint64_t marker = runtime_render_marker;

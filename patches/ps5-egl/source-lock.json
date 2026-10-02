@@ -1,0 +1,6 @@
+{
+  "upstream_source": "src/egl/ps5_egl.c",
+  "source_sha256": "68e6cd1143dd7ea90577ac0348b28990127b56c9d68053306455e40067edbe01",
+  "sdk_release": "ps5-opengl-sdk-0.3.0",
+  "note": "Unmodified SDK source; preserve release core33 explicit compressed_fallback=1 and core_context=1."
+}

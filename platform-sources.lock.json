@@ -1,0 +1,28 @@
+{
+  "ps5_opengl": {
+    "url": "https://github.com/blackbearreloaded/ps5-opengl",
+    "release": "v0.3.0",
+    "dependencies_file": "ps5-opengl/dependencies.json in source archive"
+  },
+  "native_app": {
+    "url": "https://github.com/blackbearreloaded/ps5-native-app-boilerplate.git",
+    "commit": "c93771e0f9bf4f0993c3c317d7df4cc01888fb72",
+    "local_modifications": "current sources included in release source archive"
+  },
+  "payload_sdk": {
+    "url": "https://github.com/ps5-payload-dev/sdk",
+    "release": "v0.42",
+    "archive_sha256": "8cfbc7cd5811e719eb4f0c47eea668d3dc7b40bc8ab11c4a5031d40c23ec02da"
+  },
+  "sdl": {
+    "url": "https://github.com/ps5-payload-dev/SDL",
+    "version": "2.30.12",
+    "base_revision": "8c56053f13ca13a0c050de613706ff69eb615836",
+    "modifications": "current source snapshot and integration included in release source archive"
+  },
+  "zlib": {
+    "version": "1.3.1",
+    "url": "https://zlib.net/",
+    "source": "source archive ps5sdk/deps/zlib"
+  }
+}

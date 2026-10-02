@@ -1,0 +1,22 @@
+{
+  "deps/openscenegraph": {
+    "url": "https://github.com/openscenegraph/OpenSceneGraph.git",
+    "commit": "a827840baf0786d72e11ac16d5338a4ee25779db"
+  },
+  "deps/mygui": {
+    "url": "https://github.com/MyGUI/mygui.git",
+    "commit": "dae9ac4be5a09e672bec509b1a8552b107c40214"
+  },
+  "deps/freetype": {
+    "url": "https://github.com/freetype/freetype.git",
+    "commit": "42608f77f20749dd6ddc9e0536788eaad70ea4b5"
+  },
+  "deps/libpng": {
+    "url": "https://github.com/pnggroup/libpng.git",
+    "commit": "f5e92d76973a7a53f517579bc95d61483bf108c0"
+  },
+  "deps/libjpeg-turbo": {
+    "url": "https://github.com/libjpeg-turbo/libjpeg-turbo.git",
+    "commit": "f29eda648547b36aa594c4116c7764a6c8a079b9"
+  }
+}

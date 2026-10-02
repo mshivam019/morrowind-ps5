@@ -1,0 +1,96 @@
+--- a/patches/ps5-draw-batching/ps5_screen.c
++++ b/patches/ps5-draw-batching/ps5_screen.c
+@@ -433,12 +433,29 @@
+    /* The CPU may have written the backing since it was last flushed for the
+     * GPU. GPU-only render and depth targets skip per-batch flushes otherwise. */
+    bool cpu_dirty;
++   bool cpu_pointer_escaped;
++   unsigned cpu_write_maps;
+ };
+ 
+ /* Any CPU write to a window buffer: the runtime must flush the display pool. */
+ static bool ps5_scanout_cpu_dirty = true;
+ void ps5_agc_gate2_set_scanout_clean(int clean) __attribute__((weak));
+ unsigned ps5_agc_gate2_scanout_flush_count(void) __attribute__((weak));
++
++/* Only ordinary linear sampler images participate. Depth/display and
++ * image-store backings retain conservative flushing. Raw/persistent pointers
++ * cannot be tracked after they escape, so they never use clean-bit reuse. */
++static bool
++ps5_static_texture_flush_cacheable(const struct ps5_resource *resource)
++{
++   return resource && resource->base.target == PIPE_TEXTURE_2D &&
++      (resource->base.bind & PIPE_BIND_SAMPLER_VIEW) &&
++      !(resource->base.bind & (PIPE_BIND_DEPTH_STENCIL |
++                              PIPE_BIND_DISPLAY_TARGET | PIPE_BIND_SHADER_IMAGE)) &&
++      !resource->depth_staging_size &&
++      !resource->render_pool_owner && !resource->cpu_pointer_escaped &&
++      !resource->cpu_write_maps;
++}
+ 
+ static inline void
+ ps5_mark_cpu_written(const struct pipe_resource *base)
+@@ -4155,9 +4172,16 @@
+       } else {
+          /* Eligible batches retain read-only linear fragment textures. Any CPU
+           * texture access drains the batch, invalidating this flush cache. */
+-         ps5_flush_batch_backing(
+-            slot == 1 && !merged_geometry ? flush_cache : NULL, 2 + unit,
+-            texture->data, texture->size);
++         const bool cacheable = ps5_static_texture_flush_cacheable(texture);
++         if (!cacheable || texture->cpu_dirty) {
++            ps5_flush_batch_backing(
++               slot == 1 && !merged_geometry ? flush_cache : NULL, 2 + unit,
++               texture->data, texture->size);
++            /* The whole logical backing was flushed; all ordinary CPU writes
++             * invalidate cpu_dirty before any later sampling. */
++            if (cacheable)
++               texture->cpu_dirty = false;
++         }
+       }
+    }
+    if (texture_count != expected_texture_count) {
+@@ -5145,6 +5169,8 @@
+    ps5_draw_batch_drain();
+    if (!resource)
+       return -1;
++   if (address)
++      resource->cpu_pointer_escaped = true;
+    ps5_mark_cpu_written(&resource->base);
+    if (address)
+       *address = resource->data;
+@@ -5623,6 +5649,8 @@
+        resource->base.format != PIPE_FORMAT_Z32_FLOAT_S8X24_UINT ||
+        !resource->stencil_data)
+       return -1;
++   if (address)
++      resource->cpu_pointer_escaped = true;
+    ps5_mark_cpu_written(&resource->base);
+    if (address)
+       *address = resource->stencil_data;
+@@ -6817,6 +6845,13 @@
+ {
+    const int64_t started = os_time_get_nano();
+    void * result = ps5_transfer_map_profile_inner(context, base, level, usage, box, out_transfer);
++   if (result && base->target != PIPE_BUFFER) {
++      struct ps5_resource *resource = (struct ps5_resource *)base;
++      if (usage & (PIPE_MAP_PERSISTENT | PIPE_MAP_COHERENT))
++         resource->cpu_pointer_escaped = true;
++      if (usage & PIPE_MAP_WRITE)
++         ++resource->cpu_write_maps;
++   }
+    atomic_fetch_add(&ps5_cpu_profile.transfer_ns, os_time_get_nano() - started);
+    atomic_fetch_add(&ps5_cpu_profile.transfer_calls, 1);
+    return result;
+@@ -6940,6 +6975,11 @@
+ ps5_transfer_unmap(struct pipe_context *context, struct pipe_transfer *transfer)
+ {
+    const int64_t started = os_time_get_nano();
++   if (transfer->resource->target != PIPE_BUFFER && (transfer->usage & PIPE_MAP_WRITE)) {
++      struct ps5_resource *resource = (struct ps5_resource *)transfer->resource;
++      assert(resource->cpu_write_maps);
++      --resource->cpu_write_maps;
++   }
+    ps5_transfer_unmap_profile_inner(context, transfer);
+    atomic_fetch_add(&ps5_cpu_profile.transfer_ns, os_time_get_nano() - started);
+    atomic_fetch_add(&ps5_cpu_profile.transfer_calls, 1);

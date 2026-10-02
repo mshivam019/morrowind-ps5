@@ -1,0 +1,100 @@
+--- a/platform/ps5_agc_native_runtime.c
++++ b/platform/ps5_agc_native_runtime.c
+@@ -18,6 +18,7 @@
+ #include <sys/mman.h>
+ 
+ #include <ps5/kernel.h>
++#include "ps5_agc_poll.h"
+ #include "ps5_agc_profile.h"
+ 
+ #if defined(PS5_DRAW_PROFILE) && (!defined(AGC_RUNTIME_PACKAGES) || !defined(AGC_TRIANGLE_SUBMIT))
+@@ -1040,7 +1041,13 @@
+     if (attempted && runtime_batch_api.suspend_point() != 0)
+         result = 1;
+     BATCH_PROFILE_MARK(2);
++    struct ps5_agc_poll_state poll = {.start_ns = os_time_get_nano()};
++    int poll_timeout = 0;
+     for (; attempted && waits < 100000; ++waits) {
++        if (ps5_agc_poll_expired(&poll, os_time_get_nano())) {
++            poll_timeout = 1;
++            break;
++        }
+         int complete = 1;
+         for (unsigned i = 0; i < attempted; ++i) {
+             struct runtime_batch_entry *entry = &runtime_batch_entries[i];
+@@ -1049,9 +1056,15 @@
+         }
+         if (complete)
+             break;
+-        sceKernelUsleep(UINT32_C(20));
++        const int action = ps5_agc_poll_step(&poll, os_time_get_nano());
++        if (action < 0) {
++            poll_timeout = 1;
++            break;
++        }
++        if (action > 0)
++            sceKernelUsleep(UINT32_C(20));
+     }
+-    result |= waits == 100000;
++    result |= waits == 100000 || poll_timeout;
+     BATCH_PROFILE_MARK(3);
+     if (result)
+     printf("[ps5-multidraw-batch] draws=%u attempted=%u waits=%u result=%d\n",
+@@ -1063,7 +1076,7 @@
+             runtime_batch_faulted = 1;
+ #ifdef PS5_DRAW_PROFILE
+             if (profile)
+-                runtime_batch_profile_record(ticks, waits, -1);
++                runtime_batch_profile_record(ticks, poll.sleeps, -1);
+ #endif
+             return -1;
+         }
+@@ -1073,7 +1086,7 @@
+     BATCH_PROFILE_MARK(4);
+ #ifdef PS5_DRAW_PROFILE
+     if (profile)
+-        runtime_batch_profile_record(ticks, waits, 0);
++        runtime_batch_profile_record(ticks, poll.sleeps, 0);
+ #endif
+ #undef BATCH_PROFILE_MARK
+     return 0;
+@@ -4068,15 +4081,29 @@
+         PS5_PROFILE_MARK(7);
+ #ifdef AGC_RUNTIME_PACKAGES
+         waits = sync_poll_limit;
++        struct ps5_agc_poll_state poll = {.start_ns = os_time_get_nano()};
++        int poll_timeout = 0;
+         if (submit_rc == 0) {
+             for (waits = 0; waits < sync_poll_limit; ++waits) {
++                if (ps5_agc_poll_expired(&poll, os_time_get_nano())) {
++                    poll_timeout = 1;
++                    break;
++                }
+                 flush_gpu_data((const void *)completion_marker,
+                                sizeof(*completion_marker));
+                 if (*completion_marker == (uint32_t)render_marker)
+                     break;
+-                sceKernelUsleep(UINT32_C(20));
++                const int action = ps5_agc_poll_step(&poll, os_time_get_nano());
++                if (action < 0) {
++                    poll_timeout = 1;
++                    break;
++                }
++                if (action > 0)
++                    sceKernelUsleep(UINT32_C(20));
+             }
+         }
++        if (poll_timeout)
++            waits = sync_poll_limit;
+         status[3] = *completion_marker;
+ #ifdef PS5_NATIVE_TITLE_RUNTIME
+         runtime_require_retirement(submit_rc == 0 && suspend_rc == 0 && waits < sync_poll_limit);
+@@ -4086,7 +4113,7 @@
+ #endif
+         PS5_PROFILE_MARK(8);
+ #ifdef PS5_DRAW_PROFILE
+-        profile_sleeps = waits;
++        profile_sleeps = poll.sleeps;
+ #endif
+ #else
+         waits = submit_rc == 0
