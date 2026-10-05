@@ -36,18 +36,21 @@ if(NOT G19_HOST_TEST)
 endif()
 add_subdirectory("${SDL_SOURCE}" sdl)
 
-# Use SDL's own video-device extension point. Exclude its OSMesa/scanout and
-# keyboard/IME source files; retain core SDL and the upstream PS5 pad backend.
+# Use SDL's video-device extension point for rendering. Retain the upstream
+# PS5 pad backend and adapt its IME callbacks for native titles.
 get_target_property(sources SDL2-static SOURCES)
 list(FILTER sources EXCLUDE REGEX "/video/ps5/")
 set_property(TARGET SDL2-static PROPERTY SOURCES "${sources}")
 target_sources(SDL2-static PRIVATE SDL_ps5g19.c)
+if(NOT G19_HOST_TEST)
+    target_sources(SDL2-static PRIVATE SDL_ps5keyboard.c)
+endif()
 target_include_directories(SDL2-static PRIVATE "${SDL_SOURCE}/src" "${PS5_OPENGL_PREFIX}/include")
 target_compile_definitions(SDL2-static PRIVATE SDL_VIDEO_DRIVER_PS5=1 SDL_VIDEO_OPENGL=1)
 if(NOT G19_HOST_TEST)
     # Reuse upstream's install/export rules; only this adapter's dependencies differ.
     set_property(TARGET SDL2-static PROPERTY INTERFACE_LINK_LIBRARIES
-        "$<INSTALL_INTERFACE:PS5OpenGLCore33::OpenGL>;ScePad;SceUserService;SceSystemService;SceAudioOut")
+        "$<INSTALL_INTERFACE:PS5OpenGLCore33::OpenGL>;ScePad;SceUserService;SceSystemService;SceAudioOut;SceSysmodule;SceImeDialog")
     target_compile_definitions(SDL2-static INTERFACE SDL_MAIN_HANDLED=1)
     file(APPEND "${CMAKE_CURRENT_BINARY_DIR}/sdl/SDL2Config.cmake"
         "\ninclude(CMakeFindDependencyMacro)\nfind_dependency(PS5OpenGLCore33 CONFIG)\n")

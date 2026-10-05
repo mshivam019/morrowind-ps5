@@ -7,6 +7,9 @@
 #include "SDL_timer.h"
 #include "video/SDL_sysvideo.h"
 #include "events/SDL_keyboard_c.h"
+#if defined(__PROSPERO__)
+#include "video/ps5/SDL_ps5keyboard.h"
+#endif
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include "ps5g19_display.h"
@@ -126,6 +129,10 @@ static int create_window(_THIS, SDL_Window *window)
         return SDL_SetError("G19 EGL drawable %dx%d does not match the requested %dx%d window",
                             width, height, window->w, window->h);
     g->interval = 1;
+#if defined(__PROSPERO__)
+    if (PS5_Keyboard_Init() < 0 || PS5_Keyboard_Open() < 0)
+        SDL_Log("PS5 keyboard setup: %s", SDL_GetError());
+#endif
     SDL_SetKeyboardFocus(window); /* SDL also uses focus to gate joystick events. */
     sync_refresh_rate(window);
     return 0;
@@ -255,6 +262,10 @@ static void set_window_size(_THIS, SDL_Window *window)
 
 static void video_quit(_THIS)
 {
+#if defined(__PROSPERO__)
+    PS5_HideScreenKeyboard(_this, NULL);
+    PS5_Keyboard_Close();
+#endif
     G19 *g = _this->driverdata;
     if (on_thread(g) < 0 || !g->display) return;
     delete_context(_this, g->context);
@@ -280,7 +291,12 @@ static void free_device(_THIS)
 }
 
 /* Required SDL callback; joystick polling follows this in SDL_PumpEvents. */
-static void pump_events(_THIS) { (void)_this; }
+static void pump_events(_THIS) {
+    (void)_this;
+#if defined(__PROSPERO__)
+    PS5_Keyboard_PumpEvents();
+#endif
+}
 
 static SDL_VideoDevice *create_device(void)
 {
@@ -291,6 +307,12 @@ static SDL_VideoDevice *create_device(void)
     device->VideoInit = video_init;
     device->VideoQuit = video_quit;
     device->PumpEvents = pump_events;
+#if defined(__PROSPERO__)
+    device->HasScreenKeyboardSupport = PS5_HasScreenKeyboardSupport;
+    device->ShowScreenKeyboard = PS5_ShowScreenKeyboard;
+    device->HideScreenKeyboard = PS5_HideScreenKeyboard;
+    device->IsScreenKeyboardShown = PS5_IsScreenKeyboardShown;
+#endif
     device->CreateSDLWindow = create_window;
     device->DestroyWindow = destroy_window;
     device->SetWindowSize = set_window_size;
