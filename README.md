@@ -2,29 +2,31 @@
 
 A native PS5 port of [OpenMW 0.51.0](https://github.com/OpenMW/openmw), the open-source Morrowind engine, using the PS5 OpenGL runtime. Companion project to [Ocarina of Time](https://github.com/mshivam019/oot64-ps5) and [Majora’s Mask](https://github.com/mshivam019/tmm64-ps5) for PS5.
 
-[Download the beta](https://github.com/mshivam019/morrowind-ps5/releases/tag/v0.1.0-beta.1) · [Console setup](docs/CONSOLE-SETUP.md) · [Build from source](docs/BUILDING.md)
+[Download v1.0.0](https://github.com/mshivam019/morrowind-ps5/releases/tag/v1.0.0) · [Console setup](docs/CONSOLE-SETUP.md) · [Build from source](docs/BUILDING.md)
 
 ## Features
 
 - Native homebrew title **Morrowind - OpenMW** (`PPSA99630`), launched from the PS5 home screen.
 - 1920 × 1080 rendering; approximately 30 FPS in the measured stationary exterior scene. Performance varies by location.
 - DualSense movement, camera controls, interaction and gamepad menus.
-- Inventory and audio work in the tested demo.
+- Sony native on-screen keyboard for character names.
+- Controller appearance selection, inventory, audio, and basic save/load.
+- Larger dialogs and text with a 150% interface scale.
 - Native submission batching and asynchronous batch preparation through the patched PS5 OpenGL driver.
 - Original game textures by default.
 
-**This is an early beta.** It opens the normal main menu; New Game uses Morrowind’s original opening and character-creation scripts. This is an early release for testing and contributions. Stable 60 FPS is not established. See [validation and known limits](docs/VALIDATION.md).
+**v1.0.0 is the first stable release.** New Game uses the original opening and character-creation flow, with Sony's native keyboard for name entry. The interface is scaled to 150% for TV use. Tested on PS5 firmware 9.00 with kstuff and ShadowMount. See [validation and known limits](docs/VALIDATION.md).
 
 ## Requirements
 
 - Homebrew-capable PS5 with native folder-title support, an active FTP server and a compatible title registration/mounting setup.
-- Your own PC installation of **Morrowind, Tribunal and Bloodmoon**. The beta configuration enables all three master files and archives.
+- Your own PC installation of **Morrowind, Tribunal and Bloodmoon**. The release configuration enables all three master files and archives.
 - An M.2 installation path for the title and enough space for the engine plus your complete `Data Files` folder.
 - Any FTP client, such as FileZilla or WinSCP. The optional helpers use PowerShell/curl.exe on Windows or Bash/curl on Linux and macOS.
 
 ## Installation
 
-1. Download the Windows or Linux ZIP from the [beta release](https://github.com/mshivam019/morrowind-ps5/releases/tag/v0.1.0-beta.1) and extract it. Both contain the same PS5 executable; macOS users can use the Linux archive.
+1. Download the Windows or Linux ZIP from the [stable release](https://github.com/mshivam019/morrowind-ps5/releases/tag/v1.0.0) and extract it. Both contain the same PS5 executable; macOS users can use the Linux archive.
 2. Copy your complete PC `Data Files` folder into `output/PPSA99630/assets/Data Files/`. Include `Morrowind.esm`, `Tribunal.esm`, `Bloodmoon.esm`, their `.bsa` archives and loose game files. Game data is not included in the download.
 3. Close any running copy of the game. Upload `output/PPSA99630` to your console, for example `/mnt/ext1/etaHEN/games/PPSA99630`.
 4. Register/mount that folder using your native-title launcher, then start **Morrowind - OpenMW** from the home screen. FTP upload alone does not register the title.
@@ -45,11 +47,21 @@ Use `-FtpPort` / `--ftp-port` or `-InstallRoot` / `--install-root` to match your
 
 ## Validation and known limits
 
-The packaged build booted on the developer’s PS5. Movement, turning, world rendering, water, characters and menus were visually checked; the latest video also shows home-screen launch, inventory and interaction. The measured stationary outdoor rate remains approximately 30 FPS. Earlier interior/exterior transition tests produced slower outdoor views. Recording at 60 FPS is not evidence of 60 FPS gameplay.
+Console testing confirmed home-screen launch, the original opening, native keyboard name entry, appearance controls, movement, camera controls, inventory, interaction, audio, and basic save/load. The user also confirmed the larger dialogs and normal visuals with the optional Morrowind Optimization Patch.
 
-HD textures are disabled after a console test produced flickering. Use original textures for this beta. Performance and compatibility may vary across firmware, loaders and game locations.
+The measured stationary outdoor rate remains approximately 30 FPS. Performance varies by location; a 60 FPS recording or engine cap does not establish 60 FPS gameplay. A complete playthrough and other firmware combinations have not been validated.
 
-Configuration, saves and cache use the title’s `/download0` sandbox. Preserve that data when updating and do not overwrite a running title. The beta opens the normal main menu.
+HD textures are disabled after a console test produced flickering. Use original textures. Performance and compatibility may vary across firmware, loaders and game locations.
+
+Configuration, saves and cache use the title’s `/download0` sandbox. Preserve that data when updating and do not overwrite a running title. The release opens the normal main menu.
+
+## Controller menus
+
+The left stick moves the pointer. Cross on DualSense or A on Redgear selects; Circle or B goes back. L1/R1 switch the main Options tabs. Inside Controls, point at **Controller** with the left stick and press Cross/A to switch from Mouse and Keyboard.
+
+## Optional optimization mod
+
+[Morrowind Optimization Patch](https://www.nexusmods.com/morrowind/mods/45384) reduces mesh complexity. Its 1.18 core files were tested with this build. It is not included and does not guarantee 60 FPS. See [installation instructions](docs/CONSOLE-SETUP.md#optional-morrowind-optimization-patch).
 
 ## Building and layout
 

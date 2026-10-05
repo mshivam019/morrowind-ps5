@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and assemble engine-only Windows/Linux native-title beta downloads."""
+"""Validate and assemble engine-only Windows/Linux native-title downloads."""
 import argparse
 import hashlib
 import json
@@ -35,9 +35,9 @@ def validate(title):
                   'fallback=Movies_Morrowind_Logo,mw_logo.bik',
                   'fallback=Movies_New_Game,mw_intro.bik']:
         if value not in config.splitlines():
-            raise ValueError(f'Unexpected beta configuration: missing {value}')
+            raise ValueError(f'Unexpected release configuration: missing {value}')
     if any(line.startswith('start=') for line in config.splitlines()):
-        raise ValueError('Demo start cell override in beta configuration')
+        raise ValueError('Demo start cell override in release configuration')
     if any('data=' in line and 'MET' in line for line in config.splitlines()):
         raise ValueError('HD texture root enabled')
     files = []
@@ -66,7 +66,7 @@ def validate(title):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--title', type=Path, required=True)
-    parser.add_argument('--version', default='v0.1.0-beta.1')
+    parser.add_argument('--version', default='v1.0.0')
     parser.add_argument('--out', type=Path, default=ROOT / 'build/releases')
     parser.add_argument('--check-only', action='store_true')
     args = parser.parse_args()
@@ -82,7 +82,7 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     notices = [ROOT / 'LICENSE', ROOT / 'THIRD-PARTY-NOTICES.md']
     notices += sorted(p for p in (ROOT / 'LICENSES').rglob('*') if p.is_file())
-    install = f'''Morrowind for PS5 — {args.version} (early beta)
+    install = f'''Morrowind for PS5 - {args.version}
 
 1. Copy your own complete Morrowind + Tribunal + Bloodmoon Data Files folder to:
    output/PPSA99630/assets/Data Files/
@@ -96,7 +96,8 @@ Linux/macOS: bash tools/install.sh --src output/PPSA99630 --console <console-ip>
 The helpers upload only; registration/mounting is a separate step. Any FTP client works.
 A homebrew-capable PS5 and compatible native-title loader are required.
 Original game textures only. 1080p; approximately 30 FPS in the tested exterior scene.
-Normal main menu and New Game are enabled. Full progression and save/load are unverified.
+Normal New Game, native keyboard name entry, appearance controls and basic save/load were tested on firmware 9.00.
+The interface is scaled to 150% for TV use. Full-game progression remains unverified.
 Preserve game files and /download0 sandbox data when updating; close the title first.
 
 Source and corresponding-source archive:

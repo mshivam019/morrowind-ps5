@@ -4,10 +4,10 @@ Use Linux or WSL2, Clang/LLVM 18 wrappers, CMake, Ninja, Python 3, Bash, Git, pa
 
 ## Dependency layout
 
-The repository contains PS5 changes rather than vendored upstream engines. The beta’s `morrowind-ps5-v0.1.0-beta.1-source.tar.gz` includes actual source snapshots, already carrying the changes used for the build:
+The repository contains PS5 changes rather than vendored upstream engines. The release’s `morrowind-ps5-v1.0.0-source.tar.gz` includes actual source snapshots, already carrying the changes used for the build:
 
 ```text
-morrowind-ps5-v0.1.0-beta.1-source/
+morrowind-ps5-v1.0.0-source/
   port/                         this repository
     openmw/                     patched OpenMW 0.51.0
     deps/                       engine library source trees and SDL source/integration
@@ -54,7 +54,7 @@ python3 tools/pack-openmw.py --out build/package
 
 Several build scripts expect the SDK’s default layout shown above. On a different layout, inspect their supported `PS5_OPENGL_ROOT`, `PS5_OPENGL_SDK`, `PS5_NATIVE_APP_TEMPLATE` and `PS5_SDL2_PREFIX` overrides. Do not assume that environment variables make every prerequisite relocatable.
 
-The folder title is generated at `build/package/dist/PPSA99630`. Supply your own game data only for console testing; keep it outside source control and release packages. Detailed profiling and HD texture flags are off for the beta.
+The folder title is generated at `build/package/dist/PPSA99630`. Supply your own game data only for console testing; keep it outside source control and release packages. Detailed profiling and HD texture flags are off for the release.
 
 ## Host checks
 
@@ -63,6 +63,15 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 python3 tools/test-native-coalesce.py
 python3 tools/test-async-screen-ownership.py
 python3 tools/test-present-boundary-drain.py
+```
+
+The native keyboard test uses the host SDL2 and libdecor development headers:
+
+```sh
+cc -g -fsanitize=address,undefined -DSDL_VIDEO_DRIVER_PS5=1 -D__PROSPERO__ \
+  -I/usr/include/SDL2 -I/usr/include/libdecor-0 -Ideps/sdl2-compat/SDL/src \
+  tests/runtime/ps5-ime.c -lSDL2 -o /tmp/morrow-ime-test
+/tmp/morrow-ime-test
 ```
 
 Rendering fixtures need the graphics sources and, for some checks, the target compiler. Host tests do not replace console validation.

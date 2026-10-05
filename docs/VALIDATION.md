@@ -1,31 +1,35 @@
-# Beta validation
+# Release validation
 
-## Included build
+## v1.0.0
 
-The v0.1.0-beta.1 executable and runtime are the console-tested `build/final-performance/dist/PPSA99630` binaries. The release configuration restores the normal main menu (`skip-menu=0`) and removes the Seyda Neen demo override. New Game follows the original game scripts. New Game invokes the original OpenMW startup path rather than the development demo shortcut.
+Tested on PS5 firmware 9.00 with kstuff and ShadowMount, installed on M.2 as `PPSA99630`.
 
-- Original textures, 1080p, 4096-unit view distance, VSync and a 60 FPS engine cap.
-- Native submission coalescing, asynchronous batch overlap, marker completion and CPUID-gated CLFLUSHOPT enabled.
-- Detailed profiling, light diagnostic counters and on-screen FPS overlay disabled.
-- Final driver archive SHA-256: `be0d0c3a033043453ad1429d0baee174ebcd275024b863ddbee5097091f17dbb`.
+The user confirmed:
 
-## Console evidence
+- Normal New Game opening and Sony native keyboard name entry.
+- The keyboard stays open, accepts the name, and allows continuing character creation.
+- Race, face, hair and other appearance controls work with the controller layout.
+- Basic save/load and normal visuals after loading the save.
+- Larger dialogs at 150% interface scale.
+- Normal visuals with the separately installed Morrowind Optimization Patch 1.18 core.
 
-The final build launched successfully and completed a 40-second capture without new presentation/assertion failures. The measured stationary outdoor cadence remained approximately 30 FPS. Controller movement/turning, characters, water, textures and menus were visually confirmed during the test round.
+Earlier console tests confirmed movement, camera controls, world rendering, inventory, interaction and audio. A complete playthrough, all quest/combat combinations, and other firmware/loader combinations have not been tested.
 
-Comparisons used 780 completed frames after startup. The baseline and several renderer candidates averaged approximately 29.97 FPS in the stationary exterior scene. Submission changes improved qualification/correctness but did not establish a 60 FPS result.
+The executable SHA-256 is `e9daec8edc9402bd72c1df73e64e9358130ecc121b2293f086ede7f3c2d748c2`, matching the console-tested build. The release uses the same GUI settings, with original game data and no enabled optional-mod path in the default configuration.
 
-An earlier indoor/outdoor transition completed, but the outdoor view after returning ran at approximately 20 FPS. That route has not been revalidated on the final build. Lighter interior views reached approximately 60 FPS in earlier development tests; this is not a full-game performance claim.
+## Automated checks
 
-The latest recording shows launch from the home screen, movement, inventory and interaction. Its 1080p60 encoding describes the recording, not engine frame rate.
+Native packaging and SELF integrity checks passed. The IME regression test runs with AddressSanitizer and UndefinedBehaviorSanitizer and SDL's real text conversion. It covers initialization/open failures, duplicate requests, Unicode across event boundaries, cancel/result failures, temporary focus loss and shutdown. These tests supplement console testing.
+
+## Rendering and performance
+
+Original textures, 1080p, 4096-unit view distance, VSync and a 60 FPS engine cap are the defaults. The graphics driver is unchanged from beta.1: SHA-256 `be0d0c3a033043453ad1429d0baee174ebcd275024b863ddbee5097091f17dbb`.
+
+Earlier measurements were approximately 30 FPS in a stationary exterior scene. A previous indoor/outdoor transition ran at about 20 FPS after returning outside; lighter interior views reached about 60 FPS. These measurements do not establish a locked 60 FPS result or a performance improvement from the optional mod.
 
 ## Known limits
 
-- Normal main menu and New Game restored; the release no longer forces the development start cell.
-- Full progression, combat coverage, save/load persistence and a complete playthrough are unverified.
-- Additional firmware, controller and native-title loader combinations are unverified.
-- HD textures produced flickering; removing that data root while keeping the executable resolved the reported flickering.
+- HD texture replacements produced flickering and remain disabled by default.
 - Native block-compressed texture sampling remains unresolved; expanded texture data increases memory use.
 - The known pre-context `glGetString` warning remains.
-
-Host regressions exercise submission/lifetime guards and rendering helpers. They cannot establish console visual correctness or compatibility.
+- Game data and optional mods must be supplied separately.

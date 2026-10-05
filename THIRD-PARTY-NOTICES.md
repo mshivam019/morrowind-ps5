@@ -39,4 +39,4 @@ Platform shim code retains Mihawk’s attributed GPL-3.0-or-later contribution. 
 
 ## Corresponding source
 
-The beta release provides a source archive alongside the binary ZIPs, with the cleaned port, current engine/dependency source trees and graphics/native-app build sources. The public [PS5 payload SDK](https://github.com/ps5-payload-dev/sdk/releases/tag/v0.42) and host compiler are separate prerequisites. Build instructions describe the source layout and the limits of fresh-clone reproduction. No proprietary SDK is distributed.
+The release provides a source archive alongside the binary ZIPs, with the cleaned port, current engine/dependency source trees and graphics/native-app build sources. The public [PS5 payload SDK](https://github.com/ps5-payload-dev/sdk/releases/tag/v0.42) and host compiler are separate prerequisites. Build instructions describe the source layout and the limits of fresh-clone reproduction. No proprietary SDK is distributed.
