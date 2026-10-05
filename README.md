@@ -83,7 +83,7 @@ docs/, LICENSES/ guides, validation and upstream notices
 - [BlackBearReloaded](https://github.com/blackbearreloaded): [ps5-opengl](https://github.com/blackbearreloaded/ps5-opengl), [native-app boilerplate](https://github.com/blackbearreloaded/ps5-native-app-boilerplate) and PS5 SDL integration.
 - [ps5-payload-dev](https://github.com/ps5-payload-dev): public homebrew SDK and SDL port.
 - Mesa, OpenGNM PSBC, OpenSceneGraph, MyGUI and the other engine dependencies listed in [third-party notices](THIRD-PARTY-NOTICES.md).
-- Mihawk for the attributed native shim contribution.
+- [Mihawk](https://github.com/mihawk-99) for the attributed native shim contribution.
 
 The port’s own code, scripts and patches use [GPL-3.0-or-later](LICENSE); upstream components retain their own licenses and notices. Game data, game installers, saves, texture packs and proprietary SDK binaries are not included.
 
