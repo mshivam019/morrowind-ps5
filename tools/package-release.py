@@ -66,7 +66,7 @@ def validate(title):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--title', type=Path, required=True)
-    parser.add_argument('--version', default='v1.0.0')
+    parser.add_argument('--version', default='v1.0.1')
     parser.add_argument('--out', type=Path, default=ROOT / 'build/releases')
     parser.add_argument('--check-only', action='store_true')
     args = parser.parse_args()

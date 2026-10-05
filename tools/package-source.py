@@ -37,7 +37,7 @@ def source_files(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--sdk-root', type=Path, default=Path(os.environ.get('PS5SDK_ROOT', Path.home() / 'ps5sdk')))
-    parser.add_argument('--version', default='v1.0.0')
+    parser.add_argument('--version', default='v1.0.1')
     parser.add_argument('--out', type=Path, default=ROOT / 'build/releases')
     args = parser.parse_args()
     if not re.fullmatch(r'v\d+\.\d+\.\d+(?:-beta\.\d+)?', args.version):

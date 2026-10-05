@@ -2,7 +2,7 @@
 
 A native PS5 port of [OpenMW 0.51.0](https://github.com/OpenMW/openmw), the open-source Morrowind engine, using the PS5 OpenGL runtime. Companion project to [Ocarina of Time](https://github.com/mshivam019/oot64-ps5) and [Majora’s Mask](https://github.com/mshivam019/tmm64-ps5) for PS5.
 
-[Download v1.0.0](https://github.com/mshivam019/morrowind-ps5/releases/tag/v1.0.0) · [Console setup](docs/CONSOLE-SETUP.md) · [Build from source](docs/BUILDING.md)
+[Download v1.0.1](https://github.com/mshivam019/morrowind-ps5/releases/tag/v1.0.1) · [Console setup](docs/CONSOLE-SETUP.md) · [Build from source](docs/BUILDING.md)
 
 ## Features
 
@@ -15,7 +15,7 @@ A native PS5 port of [OpenMW 0.51.0](https://github.com/OpenMW/openmw), the open
 - Native submission batching and asynchronous batch preparation through the patched PS5 OpenGL driver.
 - Original game textures by default.
 
-**v1.0.0 is the first stable release.** New Game uses the original opening and character-creation flow, with Sony's native keyboard for name entry. The interface is scaled to 150% for TV use. Tested on PS5 firmware 9.00 with kstuff and ShadowMount. See [validation and known limits](docs/VALIDATION.md).
+**v1.0.1 is the first stable release.** New Game uses the original opening and character-creation flow, with Sony's native keyboard for name entry. The interface is scaled to 150% for TV use. Tested on PS5 firmware 9.00 with kstuff and ShadowMount. See [validation and known limits](docs/VALIDATION.md).
 
 ## Requirements
 
@@ -26,7 +26,7 @@ A native PS5 port of [OpenMW 0.51.0](https://github.com/OpenMW/openmw), the open
 
 ## Installation
 
-1. Download the Windows or Linux ZIP from the [stable release](https://github.com/mshivam019/morrowind-ps5/releases/tag/v1.0.0) and extract it. Both contain the same PS5 executable; macOS users can use the Linux archive.
+1. Download the Windows or Linux ZIP from the [stable release](https://github.com/mshivam019/morrowind-ps5/releases/tag/v1.0.1) and extract it. Both contain the same PS5 executable; macOS users can use the Linux archive.
 2. Copy your complete PC `Data Files` folder into `output/PPSA99630/assets/Data Files/`. Include `Morrowind.esm`, `Tribunal.esm`, `Bloodmoon.esm`, their `.bsa` archives and loose game files. Game data is not included in the download.
 3. Close any running copy of the game. Upload `output/PPSA99630` to your console, for example `/mnt/ext1/etaHEN/games/PPSA99630`.
 4. Register/mount that folder using your native-title launcher, then start **Morrowind - OpenMW** from the home screen. FTP upload alone does not register the title.
@@ -72,7 +72,7 @@ patches/          OpenMW, OSG, PSBC and graphics-driver changes
 source-overlays/  PS5 paths and SDL integration
 platform/        native runtime compatibility shims
 cmake/, config/  toolchain and runtime settings
-art/             original launcher icon
+art/             launcher icon and selection/launch artwork
 tools/, tests/   build, installation and regression checks
 docs/, LICENSES/ guides, validation and upstream notices
 ```

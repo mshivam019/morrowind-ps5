@@ -113,6 +113,16 @@ def main():
         runtime = out / "src/runtime_shims.c"
         runtime.write_text(runtime.read_text().replace("  abort();", "  fflush(NULL); for (;;) sceKernelUsleep(100000);"))
     shutil.copy2(REPO / "platform/ps5_libc_shims.c", out / "src/ps5_libc_shims.c")
+    for name in ("ps5_tls_dtors.c", "ps5_emutls.c"):
+        shutil.copy2(REPO / "platform" / name, out / "src" / name)
+    # The graphics probe holds after main for inspection; the game should exit.
+    if not args.probe:
+        replace_once(out / "src/runtime_shims.c",
+                     "  for (;;)\n    sceKernelUsleep(100000);",
+                     '  extern int sceSystemServiceLoadExec(const char *, const char **);\n'
+                     '  int result = sceSystemServiceLoadExec("exit", NULL);\n'
+                     '  fprintf(stderr, "PS5 exit request returned: 0x%x\\n", result);\n'
+                     '  for (;;)\n    sceKernelUsleep(100000);')
     shutil.copy2(REPO / "platform/ps5_extra_shims.c", out / "src/ps5_extra_shims.c")
     heap = (GL_ROOT / "native-app/app_heap.c").read_text()
     old = "#define PS5_OPENGL_HEAP_SIZE (128u * 1024u * 1024u)"
@@ -151,14 +161,14 @@ def main():
     # Title metadata and launcher art.
     param = json.loads((GL_ROOT / "native-app/param.json").read_text())
     param.update(titleId=TITLE_ID, conceptId=TITLE_ID[4:], contentId=CONTENT_ID,
-                 downloadDataSize=1024)
+                 downloadDataSize=1024, contentVersion="01.000.001")
     if args.probe:
         param.update(titleId="PPSA99631", conceptId="99631", contentId="UP9000-PPSA99631_00-OPENMWGFXTEST000")
     language = param["localizedParameters"]["defaultLanguage"]
     param["localizedParameters"][language]["titleName"] = "Morrowind Graphics Test" if args.probe else TITLE_NAME
     (out / "sce_sys/param.json").write_text(json.dumps(param, indent=2) + "\n")
     for name in ("icon0.png", "pic0.dds", "pic1.dds"):
-        art = REPO / "art" if name == "icon0.png" and not args.probe else ART
+        art = REPO / "art" if not args.probe else ART
         shutil.copy2(art / name, out / "sce_sys" / name)
     # The template's home-screen preview sound is a test tone, not game audio.
     (out / "sce_sys/snd0.at9").unlink(missing_ok=True)

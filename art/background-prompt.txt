@@ -1,0 +1,5 @@
+Generated with OpenAI imagegen built-in tool on 2026-10-05.
+
+Create a finished PS5 game home-screen background for a Morrowind OpenMW port. Widescreen 16:9, ideally 3840x2160. Original atmospheric dark fantasy landscape inspired by Vvardenfell: misty volcanic coast, weathered Dunmer stone architecture and an elegant distant silt strider on the right, sparse giant mushroom silhouettes, ash mountains beneath an amber dusk sky. Painterly environmental concept art with restrained warm gold and charcoal colors, detailed but calm. Compose scenic focal points in the upper center and right. Keep the lower left dark and uncluttered so the PS5 game title and Play button are easy to read. No text, no logos, no bears, no UI, no border, no watermark. This is a usable game background asset, not a mockup or a picture of a TV.
+
+Source dimensions: 1672x941. tools/prepare-art.py scales to the required 3840x2160 and encodes BC7 DDS.

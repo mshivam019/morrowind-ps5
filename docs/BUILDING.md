@@ -4,10 +4,10 @@ Use Linux or WSL2, Clang/LLVM 18 wrappers, CMake, Ninja, Python 3, Bash, Git, pa
 
 ## Dependency layout
 
-The repository contains PS5 changes rather than vendored upstream engines. The release’s `morrowind-ps5-v1.0.0-source.tar.gz` includes actual source snapshots, already carrying the changes used for the build:
+The repository contains PS5 changes rather than vendored upstream engines. The release’s `morrowind-ps5-v1.0.1-source.tar.gz` includes actual source snapshots, already carrying the changes used for the build:
 
 ```text
-morrowind-ps5-v1.0.0-source/
+morrowind-ps5-v1.0.1-source/
   port/                         this repository
     openmw/                     patched OpenMW 0.51.0
     deps/                       engine library source trees and SDL source/integration
@@ -75,3 +75,28 @@ cc -g -fsanitize=address,undefined -DSDL_VIDEO_DRIVER_PS5=1 -D__PROSPERO__ \
 ```
 
 Rendering fixtures need the graphics sources and, for some checks, the target compiler. Host tests do not replace console validation.
+
+## Thread cleanup regression test
+
+The PS5 runtime delays emulated TLS storage cleanup until C++ thread-local
+destructors finish. This test uses real pthreads and emulated TLS with memory
+sanitizers, checking both object lifetime and destructor order across 16 threads.
+
+```sh
+clang -g -fsanitize=address,undefined -D__PROSPERO__ \
+  -c platform/ps5_emutls.c -o /tmp/morrow-emutls.o
+clang -g -fsanitize=address,undefined \
+  -c platform/ps5_tls_dtors.c -o /tmp/morrow-tls-dtors.o
+clang++ -g -fsanitize=address,undefined -femulated-tls -rtlib=compiler-rt \
+  tests/runtime/ps5-tls.cpp /tmp/morrow-emutls.o /tmp/morrow-tls-dtors.o \
+  -pthread -lgcc_s -o /tmp/morrow-tls-test
+/tmp/morrow-tls-test
+```
+
+Omitting `-D__PROSPERO__` restores the original cleanup timing and reproduces
+a use-after-free in this test. The native packager includes the adapted LLVM
+runtime and exits the process after normal engine cleanup completes.
+
+## Home-screen artwork
+
+`art/background-source.png` is the generated selection background; `art/background-prompt.txt` records its prompt and origin. `art/pic0.dds` and `art/pic1.dds` contain the same artwork. The native packager uses these checked-in assets. To rebuild the DDS files on Linux, install Pillow and ispc_texcomp in a virtual environment and run `python tools/prepare-art.py`. Both outputs must be 3840x2160 BC7 UNORM DDS without mipmaps.

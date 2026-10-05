@@ -1,5 +1,13 @@
 # Release validation
 
+## v1.0.1
+
+The user confirmed that loading a save and choosing Exit returns to the PS5 home screen without an error. This fixes a shutdown use-after-free in emulated thread-local storage and uses the PS5 system exit request after normal engine cleanup. The 16-thread regression test passes under AddressSanitizer and UndefinedBehaviorSanitizer; original cleanup timing fails the same test.
+
+Executable SHA-256: `0efcffddf80584063d764e8f22383de0b2895d447a0262d33ba3a267b9daabbf`.
+
+Selection artwork replaces the template background. The same artwork is used for the launch background. Both pass the native-title 4K BC7 DDS validator and are byte-identical. Console installation was verified by raw readback.
+
 ## v1.0.0
 
 Tested on PS5 firmware 9.00 with kstuff and ShadowMount, installed on M.2 as `PPSA99630`.

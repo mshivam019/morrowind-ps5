@@ -25,6 +25,7 @@ The port’s own additions are Copyright (C) 2026 Shivam Mishra, GPL-3.0-or-late
 | FFmpeg 6.1.3 | [FFmpeg](https://ffmpeg.org/) | LGPL configuration; LICENSES/FFmpeg.txt, FFmpeg-LGPL-2.1.txt and FFmpeg-LGPL-3.txt |
 | OpenAL Soft 1.23.1 | [OpenAL Soft](https://github.com/kcat/openal-soft) | LGPL; LICENSES/OpenAL-Soft.txt |
 | LLVM libc++, libc++abi, libunwind, compiler builtins | Public payload SDK / Clang toolchain | Apache-2.0 with LLVM exceptions and retained component notices; LICENSES/LLVM.txt |
+| LLVM emulated TLS runtime | llvm/llvm-project commit `abef48f7c85b57032c071d16f645bde5e5e8c973`; `platform/ps5_emutls.c` | Apache-2.0 with LLVM exceptions; LICENSES/LLVM-emutls.txt |
 | OpenMW bundled extern and engine resources | Included in the OpenMW corresponding-source tree | Retained per-file licenses and attribution in OpenMW source |
 
 This software is based in part on the work of the Independent JPEG Group. Portions of this software are copyright © the FreeType Project. Original upstream notices are included in the corresponding-source archive; the root LICENSES directory is a convenient collection, not a replacement for per-file notices.
@@ -33,7 +34,7 @@ This software is based in part on the work of the Independent JPEG Group. Portio
 
 The packaged libc.prx matches the native-app boilerplate’s published clean-room runtime hash: `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036`. It is independently authored homebrew code, not a Sony firmware module. System import libraries are link-time inputs; Sony system implementations are not bundled.
 
-The launcher icon is the port’s original text-based SVG/PNG. Backgrounds come from the native-app boilerplate’s original GPL-3.0-or-later presentation assets, Copyright (C) 2026 BlackBearReloaded. The template’s preview audio is omitted. Proprietary game data, commercial installers and third-party HD texture packs are not distributed.
+The launcher icon is the port’s original text-based SVG/PNG. The selection background is original AI-generated fantasy artwork created with OpenAI image generation; its source and prompt are in `art/`. The same artwork is used for the launch background. The template’s preview audio is omitted. Proprietary game data, commercial installers and third-party HD texture packs are not distributed.
 
 Platform shim code retains Mihawk’s attributed GPL-3.0-or-later contribution. PS5 graphics and SDL source copies retain BlackBearReloaded’s original headers; port modifications are supplied in patches and overlays.
 
