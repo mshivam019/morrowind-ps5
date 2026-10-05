@@ -336,3 +336,32 @@ index 9ff0545..7228442 100644
          mContext = SDL_GL_CreateContext(mWindow);
          if (!mContext)
          {
+diff --git a/files/data/mygui/openmw_resources.xml b/files/data/mygui/openmw_resources.xml
+index 47fa71e..b21dbd8 100644
+--- a/files/data/mygui/openmw_resources.xml
++++ b/files/data/mygui/openmw_resources.xml
+@@ -4,21 +4,21 @@
+ 
+     <!-- Cursors -->
+     <Resource type="ResourceImageSet" name="ArrowPointerImage">
+-        <Group name="Pointer" texture="textures\tx_cursor.dds">
++        <Group name="Pointer" texture="textures\tx_cursor.dds" size="32 32">
+             <Index name="Pointer" >
+                 <Frame point="0 0"/>
+             </Index>
+         </Group>
+     </Resource>
+     <Resource type="ResourceImageSet" name="HResizePointerImage">
+-        <Group name="Pointer" texture="textures\tx_cursormove.dds">
++        <Group name="Pointer" texture="textures\tx_cursormove.dds" size="32 32">
+             <Index name="Pointer" >
+                 <Frame point="0 0"/>
+             </Index>
+         </Group>
+     </Resource>
+     <Resource type="ResourceImageSet" name="DropGroundPointerImage">
+-        <Group name="Pointer" texture="textures\cursor_drop_ground.dds">
++        <Group name="Pointer" texture="textures\cursor_drop_ground.dds" size="32 32">
+             <Index name="Pointer" >
+                 <Frame point="0 0"/>
+             </Index>

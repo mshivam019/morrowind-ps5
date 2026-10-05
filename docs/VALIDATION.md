@@ -11,6 +11,7 @@ The user confirmed:
 - Race, face, hair and other appearance controls work with the controller layout.
 - Basic save/load and normal visuals after loading the save.
 - Larger dialogs at 150% interface scale.
+- Visible left-stick pointer in Options and selection of the Controller sub-tab.
 - Normal visuals with the separately installed Morrowind Optimization Patch 1.18 core.
 
 Earlier console tests confirmed movement, camera controls, world rendering, inventory, interaction and audio. A complete playthrough, all quest/combat combinations, and other firmware/loader combinations have not been tested.
