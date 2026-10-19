@@ -118,7 +118,7 @@ No commercial game files, HD texture packs or proprietary SDK binaries are inclu
             for name in ['README.md', 'docs/CONSOLE-SETUP.md', 'docs/VALIDATION.md']:
                 z.write(ROOT / name, name)
             z.write(ROOT / 'tools' / helper, 'tools/' + helper)
-            for name in ['install.py', 'ps5_install_lib.py', 'prepare-files.py', 'transfer-files.py', 'Prepare-Files-Windows.cmd', 'prepare-files.sh', 'INSTALL-HELPER-LICENSE']:
+            for name in ['install.py', 'ps5_install_lib.py', 'prepare-files.py', 'transfer-files.py', 'Prepare-Files-Windows.cmd', 'prepare-files.sh', 'validate-files.py', 'Validate-Files-Windows.cmd', 'validate-files.sh', 'INSTALL-HELPER-LICENSE']:
                 z.write(ROOT / 'tools' / name, 'tools/' + name)
             z.write(ROOT / 'INSTALL.md', 'INSTALL.md')
             z.writestr('INSTALL.txt', install)
