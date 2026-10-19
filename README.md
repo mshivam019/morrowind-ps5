@@ -1,5 +1,9 @@
 # Morrowind: PS5 native port
 
+**[Start here: installation, USB/offline copying, Wi-Fi FTP and game-file locations](INSTALL.md).**
+M.2, Ethernet and PS5 Upload are optional. The guide also explains recovery after
+store updates; older packaged instructions may describe the developer's M.2 setup.
+
 A native PS5 port of [OpenMW 0.51.0](https://github.com/OpenMW/openmw), the open-source Morrowind engine, using the PS5 OpenGL runtime. Companion project to [Ocarina of Time](https://github.com/mshivam019/oot64-ps5) and [Majora’s Mask](https://github.com/mshivam019/tmm64-ps5) for PS5.
 
 [Download v1.0.1](https://github.com/mshivam019/morrowind-ps5/releases/tag/v1.0.1) · [Console setup](docs/CONSOLE-SETUP.md) · [Build from source](docs/BUILDING.md)
@@ -19,31 +23,25 @@ A native PS5 port of [OpenMW 0.51.0](https://github.com/OpenMW/openmw), the open
 
 ## Requirements
 
-- Homebrew-capable PS5 with native folder-title support, an active FTP server and a compatible title registration/mounting setup.
+- Homebrew-capable PS5 with native folder-title support, a compatible title registration/mounting setup and a file-copy method.
 - Your own PC installation of **Morrowind, Tribunal and Bloodmoon**. The release configuration enables all three master files and archives.
-- An M.2 installation path for the title and enough space for the engine plus your complete `Data Files` folder.
-- Any FTP client, such as FileZilla or WinSCP. The optional helpers use PowerShell/curl.exe on Windows or Bash/curl on Linux and macOS.
+- A loader-supported installation location and enough space for the engine plus your complete `Data Files` folder.
+- A console file manager for USB copying, or any FTP client such as FileZilla or WinSCP (Wi-Fi or Ethernet). The optional common helpers use Python 3.9+ on Windows/Linux/macOS; manual copying needs no Python.
 
 ## Installation
 
-1. Download the Windows or Linux ZIP from the [stable release](https://github.com/mshivam019/morrowind-ps5/releases/tag/v1.0.1) and extract it. Both contain the same PS5 executable; macOS users can use the Linux archive.
-2. Copy your complete PC `Data Files` folder into `output/PPSA99630/assets/Data Files/`. Include `Morrowind.esm`, `Tribunal.esm`, `Bloodmoon.esm`, their `.bsa` archives and loose game files. Game data is not included in the download.
-3. Close any running copy of the game. Upload `output/PPSA99630` to your console, for example `/mnt/ext1/etaHEN/games/PPSA99630`.
-4. Register/mount that folder using your native-title launcher, then start **Morrowind - OpenMW** from the home screen. FTP upload alone does not register the title.
+Install `PPSA99630.zip` from ProsperoStore/the release, or unpack the complete
+precompiled title folder. Add your complete **Data Files** folder under
+`PPSA99630/assets/Data Files/`, including Morrowind, Tribunal and Bloodmoon master
+files, archives and loose files. Close the game before updating its files.
 
-**Windows** (optional upload helper):
+Copy using USB plus your console file manager, Wi-Fi FTP, Ethernet FTP or your
+preferred tool. Use the destination selected by your loader/store; M.2 and PS5
+Upload are optional. A new manual title still needs your loader to mount/register it.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File tools\install.ps1 -Src .\output\PPSA99630 -Console <console-ip>
-```
-
-**Linux/macOS** (optional upload helper):
-
-```sh
-bash tools/install.sh --src output/PPSA99630 --console <console-ip>
-```
-
-Use `-FtpPort` / `--ftp-port` or `-InstallRoot` / `--install-root` to match your setup. The folder name `etaHEN` alone does not establish a loader requirement. Read [console setup](docs/CONSOLE-SETUP.md) and the archive’s `INSTALL.txt` before updating.
+[INSTALL.md](INSTALL.md) gives exact layouts, the separate optional prepare and
+transfer helpers, and recovery after store updates. The release's Windows/Linux
+ZIPs contain the same PS5 app. No compilation or conversion is needed for Data Files.
 
 ## Validation and known limits
 

@@ -84,14 +84,17 @@ def main():
     notices += sorted(p for p in (ROOT / 'LICENSES').rglob('*') if p.is_file())
     install = f'''Morrowind for PS5 - {args.version}
 
+START WITH INSTALL.md for internal/USB storage, offline copying or Wi-Fi FTP.
+M.2, PS5 Upload and Ethernet are optional. Legacy examples below need your chosen destination and closed-game acknowledgement.
+
 1. Copy your own complete Morrowind + Tribunal + Bloodmoon Data Files folder to:
    output/PPSA99630/assets/Data Files/
 2. Close the game. Upload output/PPSA99630 to your homebrew console, e.g.:
    /mnt/ext1/etaHEN/games/PPSA99630
 3. Register/mount the folder with your native-title launcher and launch it.
 
-Windows: powershell -ExecutionPolicy Bypass -File tools\\install.ps1 -Src .\\output\\PPSA99630 -Console <console-ip>
-Linux/macOS: bash tools/install.sh --src output/PPSA99630 --console <console-ip>
+Windows: powershell -ExecutionPolicy Bypass -File tools\\install.ps1 -Src .\\output\\PPSA99630 -Console <console-ip> -RemoteDir <installed-title-path> -Closed
+Linux/macOS: bash tools/install.sh --src output/PPSA99630 --console <console-ip> --remote-dir <installed-title-path> --closed
 
 The helpers upload only; registration/mounting is a separate step. Any FTP client works.
 A homebrew-capable PS5 and compatible native-title loader are required.
@@ -115,6 +118,9 @@ No commercial game files, HD texture packs or proprietary SDK binaries are inclu
             for name in ['README.md', 'docs/CONSOLE-SETUP.md', 'docs/VALIDATION.md']:
                 z.write(ROOT / name, name)
             z.write(ROOT / 'tools' / helper, 'tools/' + helper)
+            for name in ['install.py', 'ps5_install_lib.py', 'prepare-files.py', 'transfer-files.py', 'Prepare-Files-Windows.cmd', 'prepare-files.sh', 'INSTALL-HELPER-LICENSE']:
+                z.write(ROOT / 'tools' / name, 'tools/' + name)
+            z.write(ROOT / 'INSTALL.md', 'INSTALL.md')
             z.writestr('INSTALL.txt', install)
             z.writestr('MANIFEST.json', json.dumps(manifest, indent=2) + '\n')
         archive.with_suffix(archive.suffix + '.sha256').write_text(f'{digest(archive)}  {archive.name}\n')

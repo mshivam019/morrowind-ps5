@@ -1,3 +1,8 @@
+CURRENT INSTALLATION GUIDE: https://github.com/mshivam019/morrowind-ps5/blob/main/INSTALL.md
+Use that guide for internal/USB storage, offline copying or Wi-Fi FTP.
+M.2, Ethernet and PS5 Upload are optional. Paths in older instructions below
+describe the developer setup, not required hardware or transfer software.
+
 # Console setup
 
 The release is a native folder title, not a retail PS5 package. It requires a homebrew-capable console and a setup that registers and mounts folder titles.
